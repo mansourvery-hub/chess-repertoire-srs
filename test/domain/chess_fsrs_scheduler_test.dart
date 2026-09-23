@@ -116,6 +116,33 @@ void main() {
       final s2 = scheduler.schedule(previous: s1, result: ReviewResult.correct, now: t1);
 
       expect(s2.stability, closeTo(s1.stability * 1.02, 100));
+      expect(
+        s2.difficulty,
+        equals(s1.difficulty),
+        reason: 'Difficulty must not change on same-day review',
+      );
+    });
+
+    test('multiple intra-session retries do not escalate difficulty', () {
+      final s0 = ReviewState.initial(decisionId: 'd1');
+      final s1 = scheduler.schedule(previous: s0, result: ReviewResult.correct, now: t0);
+      final initialDifficulty = s1.difficulty;
+
+      // Fail 2 minutes later
+      final t1 = t0.add(const Duration(minutes: 2));
+      final s2 = scheduler.schedule(previous: s1, result: ReviewResult.incorrect, now: t1);
+
+      // Fail again 3 minutes later in the same session
+      final t2 = t0.add(const Duration(minutes: 5));
+      final s3 = scheduler.schedule(previous: s2, result: ReviewResult.incorrect, now: t2);
+
+      // Succeed 4 minutes later
+      final t3 = t0.add(const Duration(minutes: 9));
+      final s4 = scheduler.schedule(previous: s3, result: ReviewResult.correct, now: t3);
+
+      expect(s2.difficulty, equals(initialDifficulty));
+      expect(s3.difficulty, equals(initialDifficulty));
+      expect(s4.difficulty, equals(initialDifficulty));
     });
 
     test('tournament mode target retention produces tighter review intervals', () {
