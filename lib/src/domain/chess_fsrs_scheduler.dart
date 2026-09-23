@@ -116,9 +116,14 @@ double fsrsNextStabilitySuccess(double d, double s, double r, ChessFsrsParams p)
 }
 
 /// Calculates regressed stability after a lapse (Rating.again).
+///
+/// In canonical FSRS-4.5/5, post-lapse stability is strictly bounded by prior
+/// stability (`min(safeS, raw)`) so that failing an overdue move never increases stability.
 double fsrsNextStabilityLapse(double d, double s, double r, ChessFsrsParams p) {
   final safeS = s <= 0 ? p.minStabilityDays : s;
-  return p.w11 * math.pow(d, -p.w12) * (math.pow(safeS + 1, p.w13) - 1) * math.exp((1 - r) * p.w14);
+  final raw =
+      p.w11 * math.pow(d, -p.w12) * (math.pow(safeS + 1, p.w13) - 1) * math.exp((1 - r) * p.w14);
+  return math.min(safeS, raw);
 }
 
 /// Domain-adapted FSRS-5 spaced repetition scheduler for chess repertoires.

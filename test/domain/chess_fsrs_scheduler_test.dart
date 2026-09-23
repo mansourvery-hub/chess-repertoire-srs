@@ -94,6 +94,30 @@ void main() {
       expect(s2.stability, lessThan(s1.stability));
     });
 
+    test('overdue lapse strictly bounds post-lapse stability by prior stability', () {
+      // Simulate an item with prior stability S = 1.0 day that is 90 days overdue
+      final overdueState = ReviewState(
+        decisionId: 'd-overdue',
+        repetitionCount: 1,
+        stability: 1.0 * 86400000,
+        difficulty: 4.93,
+        lastReviewedAt: t0,
+        nextDueAt: t0.add(const Duration(days: 1)),
+      );
+
+      final tOverdue = t0.add(const Duration(days: 90));
+      final nextState = scheduler.schedule(
+        previous: overdueState,
+        result: ReviewResult.incorrect,
+        now: tOverdue,
+      );
+
+      // Post-lapse stability must never exceed prior stability (1.0 day in ms)
+      expect(nextState.stability, lessThanOrEqualTo(overdueState.stability));
+      expect(nextState.stability / 86400000, lessThanOrEqualTo(1.0));
+      expect(nextState.lapseCount, 1);
+    });
+
     test('hintUsed or multipleAttempts forces Rating.again even when move was correct', () {
       final s0 = ReviewState.initial(decisionId: 'd1');
       final s1 = scheduler.schedule(
