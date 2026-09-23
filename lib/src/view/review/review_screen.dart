@@ -636,6 +636,21 @@ class _BottomReviewFeedback extends ConsumerWidget {
   }
 }
 
+String _formatDueInterval(DateTime? nextDueAt, DateTime? from) {
+  if (nextDueAt == null) return 'due now';
+  final baseline = from ?? DateTime.now();
+  final diffMs = nextDueAt.difference(baseline).inMilliseconds;
+  if (diffMs <= 0) return 'due now';
+  final days = diffMs / 86400000;
+  if (days >= 1.0) {
+    return days >= 10 ? '${days.round()}d' : '${days.toStringAsFixed(1)}d';
+  } else if (days * 24 >= 1.0) {
+    return '${(days * 24).toStringAsFixed(1)}h';
+  } else {
+    return '${(days * 1440).round()}m';
+  }
+}
+
 class _SrsDiagnosticsOverlay extends StatelessWidget {
   const _SrsDiagnosticsOverlay({required this.state});
 
@@ -794,14 +809,11 @@ class _SrsDiagnosticsOverlay extends StatelessWidget {
                     result: lastResult.isCorrect ? ReviewResult.correct : ReviewResult.incorrect,
                     now: now,
                   );
-                  final simDays = (simulated?.stability ?? 0) / 86400000;
-                  final simStr = simDays >= 10
-                      ? '${simDays.round()}d'
-                      : '${simDays.toStringAsFixed(1)}d';
+                  final simStr = _formatDueInterval(simulated?.nextDueAt, now);
                   return Text(
                     lastResult.isCorrect
                         ? 'Practice Pass → Simulated next interval: $simStr (No DB write)'
-                        : 'Practice Lapse → Simulated reset to 0.35d (No DB write)',
+                        : 'Practice Lapse → Simulated next interval: $simStr (No DB write)',
                     style: TextStyle(
                       fontSize: 10.0,
                       color: lastResult.isCorrect ? Colors.purple : Colors.redAccent,
@@ -810,11 +822,16 @@ class _SrsDiagnosticsOverlay extends StatelessWidget {
                   );
                 }
 
+                final dueInterval = _formatDueInterval(
+                  lastResult.updatedState.nextDueAt,
+                  lastResult.updatedState.lastReviewedAt ?? now,
+                );
                 return Text(
                   lastResult.isCorrect
-                      ? 'Last: Pass → Next due in ${(lastResult.updatedState.stability / 86400000).toStringAsFixed(1)}d'
+                      ? 'Last: Pass → Next due in $dueInterval'
                             '${lastResult.sideEffectStates.isNotEmpty ? " (+${lastResult.sideEffectStates.length} auto-exp)" : ""}'
-                      : 'Last: Lapse! Contagion applied to ${lastResult.sideEffectStates.length} descendant(s)',
+                      : 'Last: Lapse! Next due in $dueInterval'
+                            '${lastResult.sideEffectStates.isNotEmpty ? " (${lastResult.sideEffectStates.length} contagion)" : ""}',
                   style: TextStyle(
                     fontSize: 10.0,
                     color: lastResult.isCorrect ? Colors.green : Colors.redAccent,
