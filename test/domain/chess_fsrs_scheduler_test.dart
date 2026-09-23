@@ -149,5 +149,35 @@ void main() {
       // Higher target retention produces shorter intervals for equal stability
       expect(intervals95[0], lessThan(intervals90[0]));
     });
+
+    test('defensively handles NaN, infinity, and corrupted inputs without throwing', () {
+      expect(fsrsRetrievability(double.nan, 10.0), 1.0);
+      expect(fsrsRetrievability(1.0, double.nan), 0.0);
+      expect(fsrsRetrievability(-5.0, 10.0), 1.0);
+      expect(fsrsIntervalForTarget(double.nan, 0.90), 0.0);
+      expect(fsrsIntervalForTarget(10.0, double.nan), greaterThan(0.0));
+
+      final corruptedState = ReviewState(
+        decisionId: 'corrupted-id',
+        repetitionCount: 2,
+        stability: double.nan,
+        difficulty: double.nan,
+        lastReviewedAt: t0,
+        nextDueAt: t0,
+      );
+
+      final nextState = scheduler.schedule(
+        previous: corruptedState,
+        result: ReviewResult.correct,
+        now: t0.add(const Duration(days: 1)),
+      );
+
+      expect(nextState.stability.isNaN, isFalse);
+      expect(nextState.stability.isFinite, isTrue);
+      expect(nextState.difficulty.isNaN, isFalse);
+      expect(nextState.difficulty.isFinite, isTrue);
+      expect(nextState.nextDueAt, isNotNull);
+      expect(nextState.nextDueAt!.isAfter(t0), isTrue);
+    });
   });
 }

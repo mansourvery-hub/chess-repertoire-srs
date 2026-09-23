@@ -77,30 +77,34 @@ final double kFsrsFactor = math.pow(0.9, 1 / kFsrsDecay).toDouble() - 1; // 19 /
 
 /// Calculates retrievability probability R(t, S) given elapsed time and stability in days.
 double fsrsRetrievability(double elapsedDays, double stabilityDays) {
-  if (stabilityDays <= 0) return 0.0;
-  final t = elapsedDays < 0 ? 0.0 : elapsedDays;
-  return math.pow(1 + kFsrsFactor * t / stabilityDays, kFsrsDecay).toDouble();
+  if (stabilityDays.isNaN || stabilityDays <= 0) return 0.0;
+  final t = elapsedDays.isNaN || elapsedDays < 0 ? 0.0 : elapsedDays;
+  final val = math.pow(1 + kFsrsFactor * t / stabilityDays, kFsrsDecay).toDouble();
+  return (val.isFinite && !val.isNaN) ? val.clamp(0.0, 1.0) : 0.0;
 }
 
 /// Solves for the optimal review interval in days to hit [targetRetention].
 double fsrsIntervalForTarget(double stabilityDays, double targetRetention) {
-  final r = targetRetention.clamp(0.70, 0.99);
+  if (stabilityDays.isNaN || stabilityDays <= 0) return 0.0;
+  final r = (targetRetention.isNaN ? 0.88 : targetRetention).clamp(0.70, 0.99);
   final raw = stabilityDays / kFsrsFactor * (math.pow(r, 1 / kFsrsDecay) - 1);
-  return raw.isFinite && raw > 0 ? raw : 0.0;
+  return (raw.isFinite && !raw.isNaN && raw > 0) ? raw : 0.0;
 }
 
 /// Calculates initial difficulty D0 for a newly introduced move.
 double fsrsInitialDifficulty(FsrsRating rating, ChessFsrsParams p) {
   final g = _g(rating);
-  return (p.w4 - (g - 3) * p.w5).clamp(1.0, 10.0);
+  final d = p.w4 - (g - 3) * p.w5;
+  return (d.isNaN ? p.w4 : d).clamp(1.0, 10.0);
 }
 
 /// Calculates next difficulty D' upon recall outcome.
 double fsrsNextDifficulty(double d, FsrsRating rating, ChessFsrsParams p) {
+  final safeD = (d.isNaN || d <= 0) ? p.w4 : d.clamp(1.0, 10.0);
   final g = _g(rating);
-  final delta = d - p.w6 * (g - 3);
+  final delta = safeD - p.w6 * (g - 3);
   final reverted = p.w7 * p.w4 + (1 - p.w7) * delta;
-  return reverted.clamp(1.0, 10.0);
+  return (reverted.isNaN ? p.w4 : reverted).clamp(1.0, 10.0);
 }
 
 /// Initial stability in days for cold-start.
@@ -109,16 +113,26 @@ double fsrsInitialStability(FsrsRating rating, ChessFsrsParams p) =>
 
 /// Calculates new stability after successful recall (Rating.good).
 double fsrsNextStabilitySuccess(double d, double s, double r, ChessFsrsParams p) {
-  final safeS = s <= 0 ? p.minStabilityDays : s;
+  final safeS = (s.isNaN || s <= 0) ? p.minStabilityDays : s;
+  final safeD = (d.isNaN ? p.w4 : d).clamp(1.0, 10.0);
+  final safeR = (r.isNaN ? 0.0 : r).clamp(0.0, 1.0);
   final factor =
-      math.exp(p.w8) * (11 - d) * math.pow(safeS, -p.w9) * (math.exp((1 - r) * p.w10) - 1);
-  return safeS * (1 + factor);
+      math.exp(p.w8) * (11 - safeD) * math.pow(safeS, -p.w9) * (math.exp((1 - safeR) * p.w10) - 1);
+  final res = safeS * (1 + factor);
+  return (res.isFinite && !res.isNaN && res > 0) ? res : safeS;
 }
 
 /// Calculates regressed stability after a lapse (Rating.again).
 double fsrsNextStabilityLapse(double d, double s, double r, ChessFsrsParams p) {
-  final safeS = s <= 0 ? p.minStabilityDays : s;
-  return p.w11 * math.pow(d, -p.w12) * (math.pow(safeS + 1, p.w13) - 1) * math.exp((1 - r) * p.w14);
+  final safeS = (s.isNaN || s <= 0) ? p.minStabilityDays : s;
+  final safeD = (d.isNaN ? p.w4 : d).clamp(1.0, 10.0);
+  final safeR = (r.isNaN ? 0.0 : r).clamp(0.0, 1.0);
+  final raw =
+      p.w11 *
+      math.pow(safeD, -p.w12) *
+      (math.pow(safeS + 1, p.w13) - 1) *
+      math.exp((1 - safeR) * p.w14);
+  return (raw.isFinite && !raw.isNaN && raw > 0) ? raw : p.minStabilityDays;
 }
 
 /// Domain-adapted FSRS-5 spaced repetition scheduler for chess repertoires.
@@ -175,12 +189,12 @@ class ChessFsrsScheduler implements Scheduler {
       newDifficulty = fsrsInitialDifficulty(rating, params);
       newStabilityDays = fsrsInitialStability(rating, params);
     } else {
-      final prevStabilityDays = previous.stability <= 0
+      final prevStabilityDays = (previous.stability.isNaN || previous.stability <= 0)
           ? params.minStabilityDays
           : previous.stability / _dayMs;
-      final prevDifficulty = previous.difficulty <= 0
+      final prevDifficulty = (previous.difficulty.isNaN || previous.difficulty <= 0)
           ? fsrsInitialDifficulty(FsrsRating.good, params)
-          : previous.difficulty;
+          : previous.difficulty.clamp(1.0, 10.0);
 
       final r = fsrsRetrievability(elapsedDays, prevStabilityDays);
       newDifficulty = fsrsNextDifficulty(prevDifficulty, rating, params);
@@ -196,13 +210,17 @@ class ChessFsrsScheduler implements Scheduler {
       }
     }
 
-    newStabilityDays = newStabilityDays.clamp(params.minStabilityDays, params.maxStabilityDays);
+    newStabilityDays = (newStabilityDays.isNaN || !newStabilityDays.isFinite)
+        ? params.minStabilityDays
+        : newStabilityDays.clamp(params.minStabilityDays, params.maxStabilityDays);
 
-    final effectiveRetention = targetRetention.clamp(0.70, 0.99);
-    final intervalDays = fsrsIntervalForTarget(
-      newStabilityDays,
-      effectiveRetention,
-    ).clamp(minIntervalDays, maxIntervalDays);
+    final effectiveRetention = (targetRetention.isNaN || !targetRetention.isFinite)
+        ? 0.88
+        : targetRetention.clamp(0.70, 0.99);
+    final rawInterval = fsrsIntervalForTarget(newStabilityDays, effectiveRetention);
+    final intervalDays = (rawInterval.isNaN || !rawInterval.isFinite)
+        ? minIntervalDays
+        : rawInterval.clamp(minIntervalDays, maxIntervalDays);
 
     final nextDue = now.add(Duration(milliseconds: (intervalDays * _dayMs).round()));
 
