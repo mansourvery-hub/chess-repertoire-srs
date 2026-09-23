@@ -183,16 +183,21 @@ class ChessFsrsScheduler implements Scheduler {
           : previous.difficulty;
 
       final r = fsrsRetrievability(elapsedDays, prevStabilityDays);
-      newDifficulty = fsrsNextDifficulty(prevDifficulty, rating, params);
 
       if (elapsedDays < params.sameDayThresholdDays) {
+        // Intra-session / same-day reviews test short-term working memory, not long-term
+        // retention. Preserve difficulty to prevent rapid difficulty escalation during retries.
+        newDifficulty = prevDifficulty;
         newStabilityDays = rating == FsrsRating.again
             ? prevStabilityDays * params.sameDayLapseFactor
             : prevStabilityDays * params.sameDayGainFactor;
-      } else if (rating == FsrsRating.again) {
-        newStabilityDays = fsrsNextStabilityLapse(newDifficulty, prevStabilityDays, r, params);
       } else {
-        newStabilityDays = fsrsNextStabilitySuccess(newDifficulty, prevStabilityDays, r, params);
+        newDifficulty = fsrsNextDifficulty(prevDifficulty, rating, params);
+        if (rating == FsrsRating.again) {
+          newStabilityDays = fsrsNextStabilityLapse(newDifficulty, prevStabilityDays, r, params);
+        } else {
+          newStabilityDays = fsrsNextStabilitySuccess(newDifficulty, prevStabilityDays, r, params);
+        }
       }
     }
 
