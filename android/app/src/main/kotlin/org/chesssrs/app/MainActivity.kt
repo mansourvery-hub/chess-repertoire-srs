@@ -4,19 +4,16 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Rect
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.core.view.ViewCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity: FlutterActivity() {
-  private val GESTURES_CHANNEL = "mobile.lichess.org/gestures_exclusion"
   private val SYSTEM_CHANNEL = "mobile.lichess.org/system"
   private val SHARE_CHANNEL = "mobile.lichess.org/share"
   private val SHARE_EVENTS_CHANNEL = "mobile.lichess.org/share/events"
@@ -72,17 +69,6 @@ class MainActivity: FlutterActivity() {
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
-    MethodChannel(flutterEngine.dartExecutor.binaryMessenger, GESTURES_CHANNEL).setMethodCallHandler {
-      call, result ->
-      if (call.method == "setSystemGestureExclusionRects") {
-        val arguments = call.arguments as List<Map<String, Int>>
-        val decodedRects = decodeExclusionRects(arguments)
-        ViewCompat.setSystemGestureExclusionRects(activity.window.decorView, decodedRects)
-        result.success(null)
-      } else {
-        result.notImplemented()
-      }
-    }
 
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SYSTEM_CHANNEL).setMethodCallHandler {
       call, result ->
@@ -133,23 +119,6 @@ class MainActivity: FlutterActivity() {
       }
     )
   }
-
-private fun decodeExclusionRects(inputRects: List<Map<String, Int>>): List<Rect> =
-    inputRects.mapNotNull { item ->
-        val left = item["left"]
-        val top = item["top"]
-        val right = item["right"]
-        val bottom = item["bottom"]
-
-        // If any of these are null, the whole block returns null
-        if (left != null && top != null && right != null && bottom != null) {
-            Rect(left, top, right, bottom)
-        } else {
-            // Log a warning instead
-            Log.w("RectDecoder", "Skipping malformed rect: $item")
-            null
-        }
-    }
 
   private fun getAvailableMemory(): ActivityManager.MemoryInfo {
     val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager

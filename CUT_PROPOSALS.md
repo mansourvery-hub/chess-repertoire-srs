@@ -89,6 +89,7 @@ Step 14 [x]  User— Dead leaderboard & online bot screens/providers (b0ad26284)
 Step 15 [x]  C8  — Dead relation repository, following_user & follow/block actions DONE
 Step 16 [x]  C4  — Dead playban dialog, notification model & account service monitoring DONE
 Step 17 [x]  UI/Widgets — Dead orphaned widgets, views & assets (UserContextMenu, ServerOutageDisplay, ExpandedSection, SideIndicator, TextBadge, BrightnessNotifier) DONE
+Step 18 [x]  C5/C6 — Dead Android system gestures exclusion utility & method channel handler DONE
 ```
 
 Steps beyond 12 (C12 offline computer, C13 engine) are blocked on owner
@@ -313,4 +314,5 @@ or HTTP consumers outside auth and study-import paths.
 | 14 / User-Views | Dead leaderboard & online bot screens, models, and providers | `b0ad26284` | 2026-09-18 | 1252 → 1248 passing, analyze 0, linux build ok |
 | 15 / C8-Relation | Dead relation repository, following_user model, and follow/block actions | `db6409c31` | 2026-09-24 | 1248 → 1246 passing, analyze 0, linux build ok |
 | 16 / C4-Playban | Dead playban dialog, notification model & account service monitoring | `c3e91b183` | 2026-09-24 | 1246 passing, analyze 0, linux build ok |
-| 17 / UI-Residue | Dead orphaned widgets, views & assets (UserContextMenu, ServerOutageDisplay, ExpandedSection, SideIndicator, TextBadge, BrightnessNotifier) | `7ce5c495a` | 2026-09-24 | 1246 passing, analyze 0, linux build ok |
+| 17 / UI-Residue | Dead orphaned widgets, views & assets (UserContextMenu, ServerOutageDisplay, ExpandedSection, SideIndicator, TextBadge, BrightnessNotifier) | `8f0e8f7d3` | 2026-09-24 | 1246 passing, analyze 0, linux build ok |
+| 18 / Gestures | Dead Android system gestures exclusion utility & method channel handler | `bd4fa6c97` | 2026-09-24 | 1246 passing, analyze 0, linux build ok |
