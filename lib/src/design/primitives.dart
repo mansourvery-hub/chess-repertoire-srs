@@ -4,7 +4,13 @@
 // Adapted from design/flutter/primitives.dart.
 import 'package:chess_srs/src/design/hatch.dart';
 import 'package:chess_srs/src/design/tokens.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+
+bool get _isDesktopPlatform =>
+    defaultTargetPlatform == TargetPlatform.linux ||
+    defaultTargetPlatform == TargetPlatform.macOS ||
+    defaultTargetPlatform == TargetPlatform.windows;
 
 // ---------------------------------------------------------------------------
 // SrsPressable — base interactive wrapper
@@ -118,7 +124,10 @@ class SrsPillButton extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(label, style: SrsText.button(c.ground)),
-            if (shortcut != null) ...[const SizedBox(width: 12), SrsKbd(shortcut!, onInk: true)],
+            if (shortcut != null && _isDesktopPlatform) ...[
+              const SizedBox(width: 12),
+              SrsKbd(shortcut!, onInk: true),
+            ],
           ],
         ),
       ),
@@ -153,7 +162,10 @@ class SrsTextButton extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(label, style: SrsText.textButton(hover ? c.ink : c.ink2)),
-            if (shortcut != null) ...[const SizedBox(width: 10), SrsKbd(shortcut!)],
+            if (shortcut != null && _isDesktopPlatform) ...[
+              const SizedBox(width: 10),
+              SrsKbd(shortcut!),
+            ],
           ],
         ),
       ),
@@ -171,6 +183,9 @@ class SrsKbd extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isDesktopPlatform) {
+      return const SizedBox.shrink();
+    }
     final c = context.srs;
     final fg = onInk ? c.ground : c.ink2;
     return Container(

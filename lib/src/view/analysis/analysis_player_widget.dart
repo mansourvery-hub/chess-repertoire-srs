@@ -1,3 +1,4 @@
+import 'package:chess_srs/src/design/tokens.dart';
 import 'package:chess_srs/src/model/analysis/analysis_controller.dart';
 import 'package:chess_srs/src/model/analysis/analysis_player.dart';
 import 'package:chess_srs/src/styles/styles.dart';
@@ -73,8 +74,8 @@ class PgnPlayerWidget extends StatelessWidget {
               player.title!,
               style: TextStyle(
                 color: (player.title == 'BOT')
-                    ? context.lichessColors.fancy
-                    : context.lichessColors.brag,
+                    ? (SrsTheme.maybeOf(context)?.accent ?? context.lichessColors.fancy)
+                    : const Color(0xFFBF811D),
                 fontWeight: .bold,
               ),
             ),
@@ -139,12 +140,12 @@ class AnalysisPlayerWidget extends StatelessWidget {
                       color: switch (result!) {
                         AnalysisGameResult.whiteWins =>
                           side == Side.white
-                              ? context.lichessColors.good
-                              : context.lichessColors.error,
+                              ? (SrsTheme.maybeOf(context)?.accent ?? context.lichessColors.good)
+                              : Theme.of(context).colorScheme.error,
                         AnalysisGameResult.blackWins =>
                           side == Side.white
-                              ? context.lichessColors.error
-                              : context.lichessColors.good,
+                              ? Theme.of(context).colorScheme.error
+                              : (SrsTheme.maybeOf(context)?.accent ?? context.lichessColors.good),
                         _ => null,
                       },
                     ),

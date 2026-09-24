@@ -68,8 +68,20 @@ class StudyPreferencesNotifier extends Notifier<StudyPrefs> with PreferencesStor
     return save(state.copyWith(showEngineLines: !state.showEngineLines));
   }
 
+  Future<void> toggleShowMoveHistory() {
+    return save(state.copyWith(showMoveHistory: !state.showMoveHistory));
+  }
+
+  Future<void> setShowMoveHistory(bool show) {
+    return save(state.copyWith(showMoveHistory: show));
+  }
+
   Future<void> toggleAnnotations() {
     return save(state.copyWith(showAnnotations: !state.showAnnotations));
+  }
+
+  Future<void> setShowAnnotations(bool show) {
+    return save(state.copyWith(showAnnotations: show));
   }
 
   Future<void> togglePgnComments() {
@@ -132,6 +144,7 @@ sealed class StudyPrefs with _$StudyPrefs implements Serializable, CommonAnalysi
     @JsonKey(defaultValue: false) required bool inlineNotation,
     @JsonKey(defaultValue: false) required bool smallBoard,
     @JsonKey(defaultValue: false) required bool srsDiagnostics,
+    @JsonKey(defaultValue: false) required bool showMoveHistory,
     @JsonKey(defaultValue: StudyListOrder.hot) required StudyListOrder listOrder,
     @JsonKey(defaultValue: SchedulerType.simple) required SchedulerType schedulerType,
     @JsonKey(defaultValue: 0.88) required double targetRetention,
@@ -151,6 +164,7 @@ sealed class StudyPrefs with _$StudyPrefs implements Serializable, CommonAnalysi
     inlineNotation: false,
     smallBoard: false,
     srsDiagnostics: false,
+    showMoveHistory: false,
     listOrder: StudyListOrder.hot,
     schedulerType: SchedulerType.simple,
     targetRetention: 0.88,

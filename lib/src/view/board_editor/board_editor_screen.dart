@@ -1,13 +1,14 @@
 import 'dart:math' as math;
 
 import 'package:chess_srs/src/constants.dart';
+import 'package:chess_srs/src/design/board_background.dart';
+import 'package:chess_srs/src/design/tokens.dart';
 import 'package:chess_srs/src/model/analysis/analysis_controller.dart';
 import 'package:chess_srs/src/model/board_editor/board_editor_controller.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
 import 'package:chess_srs/src/model/common/chess960.dart';
 import 'package:chess_srs/src/model/common/id.dart';
 import 'package:chess_srs/src/model/settings/board_preferences.dart';
-import 'package:chess_srs/src/styles/lichess_icons.dart';
 import 'package:chess_srs/src/styles/styles.dart';
 import 'package:chess_srs/src/utils/l10n_context.dart';
 import 'package:chess_srs/src/utils/navigation.dart';
@@ -138,17 +139,20 @@ class _BoardEditor extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final editorState = ref.watch(boardEditorControllerProvider(params));
     final boardPrefs = ref.watch(boardPreferencesProvider);
+    final srsColors = SrsTheme.maybeOf(context);
 
-    return ChessboardEditor(
+    final settings = boardPrefs
+        .toBoardSettings(editorState.variant, srsColors: srsColors)
+        .copyWith(
+          borderRadius: isTablet ? Styles.boardBorderRadius : BorderRadius.zero,
+          boxShadow: isTablet ? boardShadows : const <BoxShadow>[],
+        );
+
+    final editor = ChessboardEditor(
       size: boardSize,
       pieces: pieces,
       orientation: orientation,
-      settings: boardPrefs
-          .toBoardSettings(editorState.variant)
-          .copyWith(
-            borderRadius: isTablet ? Styles.boardBorderRadius : BorderRadius.zero,
-            boxShadow: isTablet ? boardShadows : const <BoxShadow>[],
-          ),
+      settings: settings,
       pointerMode: editorState.editorPointerMode,
       onDiscardedPiece: (Square square) =>
           ref.read(boardEditorControllerProvider(params).notifier).discardPiece(square),
@@ -157,6 +161,16 @@ class _BoardEditor extends ConsumerWidget {
       onEditedSquare: (Square square) =>
           ref.read(boardEditorControllerProvider(params).notifier).editSquare(square),
     );
+
+    if (srsColors != null && settings.colorScheme.lightSquare.a == 0) {
+      return Stack(
+        children: [
+          SrsBoardBackground(size: boardSize),
+          editor,
+        ],
+      );
+    }
+    return editor;
   }
 }
 
@@ -189,86 +203,103 @@ class _PieceMenuState extends ConsumerState<_PieceMenu> {
     final boardPrefs = ref.watch(boardPreferencesProvider);
     final editorController = boardEditorControllerProvider(widget.params);
     final editorState = ref.watch(editorController);
+    final srsColors = SrsTheme.maybeOf(context);
+    final pieceAssets = boardPrefs
+        .toBoardSettings(Variant.standard, srsColors: srsColors)
+        .pieceAssets;
 
     final squareSize = widget.boardSize / 8;
+    final srs = SrsTheme.maybeOf(context);
+    final isDragActive = editorState.editorPointerMode == EditorPointerMode.drag;
+    final isDeleteActive = editorState.deletePiecesActive;
 
     return Container(
       clipBehavior: Clip.hardEdge,
       decoration: BoxDecoration(
-        borderRadius: widget.isTablet ? Styles.boardBorderRadius : BorderRadius.zero,
+        color: srs?.surface ?? Theme.of(context).colorScheme.surface,
+        borderRadius: widget.isTablet ? BorderRadius.circular(12) : BorderRadius.circular(8),
+        border: Border.all(color: srs?.hairline ?? Theme.of(context).dividerColor),
         boxShadow: widget.isTablet ? boardShadows : const <BoxShadow>[],
       ),
-      child: ColoredBox(
-        color: Theme.of(context).disabledColor,
-        child: Flex(
-          direction: widget.direction,
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: squareSize,
-              height: squareSize,
-              child: ColoredBox(
-                key: Key('drag-button-${widget.side.name}'),
-                color: editorState.editorPointerMode == EditorPointerMode.drag
-                    ? context.lichessColors.good
-                    : Colors.transparent,
-                child: GestureDetector(
-                  onTap: () =>
-                      ref.read(editorController.notifier).updateMode(EditorPointerMode.drag),
-                  child: Icon(CupertinoIcons.hand_draw, size: 0.9 * squareSize),
+      child: Flex(
+        direction: widget.direction,
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: squareSize,
+            height: squareSize,
+            child: ColoredBox(
+              key: Key('drag-button-${widget.side.name}'),
+              color: isDragActive
+                  ? (srs?.accentSoft ?? Theme.of(context).colorScheme.primaryContainer)
+                  : Colors.transparent,
+              child: GestureDetector(
+                onTap: () => ref.read(editorController.notifier).updateMode(EditorPointerMode.drag),
+                child: Icon(
+                  CupertinoIcons.hand_draw,
+                  size: 0.8 * squareSize,
+                  color: isDragActive
+                      ? (srs?.accent ?? Theme.of(context).colorScheme.primary)
+                      : (srs?.ink2 ?? Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ),
             ),
-            ...Role.values.map((role) {
-              final piece = Piece(role: role, color: widget.side);
-              final pieceWidget = PieceWidget(
-                piece: piece,
-                size: squareSize,
-                pieceAssets: boardPrefs.pieceSet.assets,
-              );
+          ),
+          ...Role.values.map((role) {
+            final piece = Piece(role: role, color: widget.side);
+            final isPieceActive =
+                ref.read(boardEditorControllerProvider(widget.params)).activePieceOnEdit == piece;
+            final pieceWidget = PieceWidget(
+              piece: piece,
+              size: squareSize,
+              pieceAssets: pieceAssets,
+            );
 
-              return ColoredBox(
-                key: Key('piece-button-${piece.color.name}-${piece.role.name}'),
-                color:
-                    ref.read(boardEditorControllerProvider(widget.params)).activePieceOnEdit ==
-                        piece
-                    ? ColorScheme.of(context).primary
-                    : Colors.transparent,
-                child: GestureDetector(
-                  child: Draggable(
-                    data: Piece(role: role, color: widget.side),
-                    feedback: PieceDragFeedback(
-                      piece: piece,
-                      squareSize: squareSize,
-                      pieceAssets: boardPrefs.pieceSet.assets,
-                    ),
-                    child: pieceWidget,
-                    onDragEnd: (_) =>
-                        ref.read(editorController.notifier).updateMode(EditorPointerMode.drag),
+            return ColoredBox(
+              key: Key('piece-button-${piece.color.name}-${piece.role.name}'),
+              color: isPieceActive
+                  ? (srs?.accentSoft ?? Theme.of(context).colorScheme.primaryContainer)
+                  : Colors.transparent,
+              child: GestureDetector(
+                child: Draggable(
+                  data: Piece(role: role, color: widget.side),
+                  feedback: PieceDragFeedback(
+                    piece: piece,
+                    squareSize: squareSize,
+                    pieceAssets: pieceAssets,
                   ),
-                  onTap: () =>
-                      ref.read(editorController.notifier).updateMode(EditorPointerMode.edit, piece),
+                  child: pieceWidget,
+                  onDragEnd: (_) =>
+                      ref.read(editorController.notifier).updateMode(EditorPointerMode.drag),
                 ),
-              );
-            }),
-            SizedBox(
-              key: Key('delete-button-${widget.side.name}'),
-              width: squareSize,
-              height: squareSize,
-              child: ColoredBox(
-                color: editorState.deletePiecesActive
-                    ? context.lichessColors.error
-                    : Colors.transparent,
-                child: GestureDetector(
-                  onTap: () =>
-                      ref.read(editorController.notifier).updateMode(EditorPointerMode.edit, null),
-                  child: Icon(CupertinoIcons.delete, size: 0.8 * squareSize),
+                onTap: () =>
+                    ref.read(editorController.notifier).updateMode(EditorPointerMode.edit, piece),
+              ),
+            );
+          }),
+          SizedBox(
+            key: Key('delete-button-${widget.side.name}'),
+            width: squareSize,
+            height: squareSize,
+            child: ColoredBox(
+              color: isDeleteActive
+                  ? Theme.of(context).colorScheme.error.withValues(alpha: 0.15)
+                  : Colors.transparent,
+              child: GestureDetector(
+                onTap: () =>
+                    ref.read(editorController.notifier).updateMode(EditorPointerMode.edit, null),
+                child: Icon(
+                  CupertinoIcons.delete,
+                  size: 0.75 * squareSize,
+                  color: isDeleteActive
+                      ? Theme.of(context).colorScheme.error
+                      : (srs?.ink3 ?? Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -537,7 +568,7 @@ class _Chess960PositionDialogState extends State<_Chess960PositionDialog> {
               hintText: 'Position ID (0-959)',
               errorText: _errorText,
               suffixIcon: IconButton(
-                icon: const Icon(LichessIcons.die_six),
+                icon: const Icon(Icons.casino_outlined),
                 onPressed: _generateRandom,
                 tooltip: context.l10n.randomChess960Position,
               ),

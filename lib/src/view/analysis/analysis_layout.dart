@@ -1,7 +1,7 @@
 import 'package:chess_srs/l10n/l10n.dart';
 import 'package:chess_srs/src/constants.dart';
+import 'package:chess_srs/src/design/tokens.dart';
 import 'package:chess_srs/src/model/settings/board_preferences.dart';
-import 'package:chess_srs/src/styles/lichess_icons.dart';
 import 'package:chess_srs/src/styles/styles.dart';
 import 'package:chess_srs/src/utils/l10n_context.dart';
 import 'package:chess_srs/src/utils/screen.dart';
@@ -26,13 +26,28 @@ typedef EngineGaugeBuilder = Widget Function(BuildContext context);
 enum AnalysisTab {
   pgn(Icons.sell_outlined),
   explorer(Icons.explore),
-  moves(LichessIcons.flow_cascade),
+  moves(Icons.account_tree_outlined),
   summary(Icons.area_chart),
   moveTimes(Icons.punch_clock);
 
   const AnalysisTab(this.icon);
 
   final IconData icon;
+
+  String shortLabel(AppLocalizations l10n) {
+    switch (this) {
+      case AnalysisTab.moves:
+        return 'Moves';
+      case AnalysisTab.pgn:
+        return 'PGN';
+      case AnalysisTab.explorer:
+        return 'Explorer';
+      case AnalysisTab.summary:
+        return 'Summary';
+      case AnalysisTab.moveTimes:
+        return 'Times';
+    }
+  }
 
   String l10n(AppLocalizations l10n) {
     switch (this) {
@@ -253,9 +268,19 @@ class AnalysisLayout extends ConsumerWidget {
                                   ),
                                 ),
                               Expanded(
-                                child: Card(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color:
+                                        SrsTheme.maybeOf(context)?.surface ??
+                                        ColorScheme.of(context).surface,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color:
+                                          SrsTheme.maybeOf(context)?.hairline ??
+                                          Theme.of(context).dividerColor,
+                                    ),
+                                  ),
                                   clipBehavior: Clip.hardEdge,
-                                  semanticContainer: false,
                                   child: _AnalysisTabView(
                                     tabs: tabs,
                                     controller: tabController,
@@ -391,8 +416,42 @@ class AnalysisLayout extends ConsumerWidget {
                               : EdgeInsets.zero,
                           child: Container(
                             decoration: BoxDecoration(
-                              color: ColorScheme.of(context).surfaceContainerLowest,
+                              color:
+                                  SrsTheme.maybeOf(context)?.surface ??
+                                  ColorScheme.of(context).surface,
+                              borderRadius: isTablet
+                                  ? const BorderRadius.all(Radius.circular(12))
+                                  : null,
+                              border: Border(
+                                top: BorderSide(
+                                  color:
+                                      SrsTheme.maybeOf(context)?.hairline ??
+                                      Theme.of(context).dividerColor,
+                                ),
+                                left: isTablet
+                                    ? BorderSide(
+                                        color:
+                                            SrsTheme.maybeOf(context)?.hairline ??
+                                            Theme.of(context).dividerColor,
+                                      )
+                                    : BorderSide.none,
+                                right: isTablet
+                                    ? BorderSide(
+                                        color:
+                                            SrsTheme.maybeOf(context)?.hairline ??
+                                            Theme.of(context).dividerColor,
+                                      )
+                                    : BorderSide.none,
+                                bottom: isTablet
+                                    ? BorderSide(
+                                        color:
+                                            SrsTheme.maybeOf(context)?.hairline ??
+                                            Theme.of(context).dividerColor,
+                                      )
+                                    : BorderSide.none,
+                              ),
                             ),
+                            clipBehavior: isTablet ? Clip.hardEdge : Clip.none,
                             child: _AnalysisTabView(
                               tabs: tabs,
                               controller: tabController,
@@ -423,22 +482,62 @@ class _AnalysisTabView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const iconSize = 18.0;
+    final srs = SrsTheme.maybeOf(context);
 
     return Column(
       children: [
         if (tabs != null && tabs!.length > 1)
           Container(
-            decoration: BoxDecoration(color: ColorScheme.of(context).surface),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: BoxDecoration(
+              color: srs?.surface ?? ColorScheme.of(context).surface,
+              border: Border(
+                bottom: BorderSide(color: srs?.hairline ?? Theme.of(context).dividerColor),
+              ),
+            ),
             child: TabBar(
               controller: controller,
+              indicator: BoxDecoration(
+                color: srs?.ink ?? ColorScheme.of(context).primary,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              indicatorSize: TabBarIndicatorSize.tab,
+              dividerColor: Colors.transparent,
+              labelColor: srs?.ground ?? ColorScheme.of(context).onPrimary,
+              unselectedLabelColor: srs?.ink2 ?? ColorScheme.of(context).onSurfaceVariant,
+              labelStyle: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.1,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                letterSpacing: -0.1,
+              ),
               tabs: tabs!
                   .map(
                     (tab) => Tooltip(
                       message: tab.l10n(context.l10n),
                       child: Tab(
-                        height: iconSize + 8.0,
-                        icon: Icon(tab.icon, size: iconSize, semanticLabel: tab.l10n(context.l10n)),
+                        height: 32,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(tab.icon, size: 14),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                tab.shortLabel(context.l10n),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   )

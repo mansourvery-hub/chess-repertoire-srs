@@ -43,6 +43,7 @@ class ReviewScreenState {
     this.isAwaitingAdvance = false,
     this.studyProgress = const {},
     this.chapterProgress = const {},
+    this.openingProgress = const {},
     this.lastStepResult,
     this.dailyReviewedCount = 0,
     this.maxDailyReviews = 100,
@@ -55,6 +56,7 @@ class ReviewScreenState {
   final Map<String, int> openingDueCounts;
   final Map<String, RepertoireProgress> studyProgress;
   final Map<String, RepertoireProgress> chapterProgress;
+  final Map<String, RepertoireProgress> openingProgress;
   final ReviewSession? session;
   final ReviewPrompt? currentPrompt;
   final Position? boardPosition;
@@ -102,6 +104,9 @@ class ReviewScreenState {
     }
     if (scope.studyId != null) {
       return studyProgress[scope.studyId!];
+    }
+    if (scope.openingFamily != null) {
+      return openingProgress[scope.openingFamily!];
     }
     return totalProgress;
   }
@@ -154,6 +159,7 @@ class ReviewScreenState {
     Map<String, int>? openingDueCounts,
     Map<String, RepertoireProgress>? studyProgress,
     Map<String, RepertoireProgress>? chapterProgress,
+    Map<String, RepertoireProgress>? openingProgress,
     ReviewSession? session,
     ReviewPrompt? currentPrompt,
     bool clearPrompt = false,
@@ -182,6 +188,7 @@ class ReviewScreenState {
       openingDueCounts: openingDueCounts ?? this.openingDueCounts,
       studyProgress: studyProgress ?? this.studyProgress,
       chapterProgress: chapterProgress ?? this.chapterProgress,
+      openingProgress: openingProgress ?? this.openingProgress,
       session: session ?? this.session,
       currentPrompt: clearPrompt ? null : (currentPrompt ?? this.currentPrompt),
       boardPosition: boardPosition ?? this.boardPosition,
@@ -303,6 +310,7 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
         openingDueCounts: summary.openingDueCounts,
         studyProgress: summary.studyProgress,
         chapterProgress: summary.chapterProgress,
+        openingProgress: summary.openingProgress,
         dailyReviewedCount: dailyReviewedCount,
         maxDailyReviews: maxDailyReviews,
       );
@@ -357,6 +365,7 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
       openingDueCounts: summary.openingDueCounts,
       studyProgress: summary.studyProgress,
       chapterProgress: summary.chapterProgress,
+      openingProgress: summary.openingProgress,
       dailyReviewedCount: dailyReviewedCount,
       maxDailyReviews: maxDailyReviews,
       session: session,
@@ -455,6 +464,7 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
         openingDueCounts: summary.openingDueCounts,
         studyProgress: summary.studyProgress,
         chapterProgress: summary.chapterProgress,
+        openingProgress: summary.openingProgress,
         session: newSession,
         currentPrompt: newPrompt,
         clearPrompt: newPrompt == null,
@@ -506,6 +516,7 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
             openingDueCounts: summary.openingDueCounts,
             studyProgress: summary.studyProgress,
             chapterProgress: summary.chapterProgress,
+            openingProgress: summary.openingProgress,
             session: newSession,
             currentPrompt: prompt,
             clearPrompt: prompt == null,
@@ -697,6 +708,7 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
 
     final studyProgressMap = Map<String, RepertoireProgress>.from(currentState.studyProgress);
     final chapterProgressMap = Map<String, RepertoireProgress>.from(currentState.chapterProgress);
+    final openingProgressMap = Map<String, RepertoireProgress>.from(currentState.openingProgress);
     final currentChapterId = currentState.currentPrompt!.chapterId;
     if (isFirstAttempt) {
       final isNewlyLearned =
@@ -724,6 +736,18 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
           dueDecisions: (chProg.dueDecisions - 1).clamp(0, chProg.totalDecisions),
         );
       }
+      if (currentOpening != null) {
+        final opProg = openingProgressMap[currentOpening];
+        if (opProg != null) {
+          openingProgressMap[currentOpening] = RepertoireProgress(
+            totalDecisions: opProg.totalDecisions,
+            learnedDecisions: isNewlyLearned
+                ? (opProg.learnedDecisions + 1).clamp(0, opProg.totalDecisions)
+                : opProg.learnedDecisions,
+            dueDecisions: (opProg.dueDecisions - 1).clamp(0, opProg.totalDecisions),
+          );
+        }
+      }
     }
 
     final updatedDailyCount = isFirstAttempt
@@ -738,6 +762,7 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
         openingDueCounts: openingCounts,
         studyProgress: studyProgressMap,
         chapterProgress: chapterProgressMap,
+        openingProgress: openingProgressMap,
         session: session,
         currentPrompt: nextPrompt,
         clearPrompt: nextPrompt == null,

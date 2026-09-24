@@ -59,7 +59,9 @@ class BoardWidget extends StatelessWidget {
       onMove: onMove,
       shapes: shapes,
       annotations: annotations,
-      settings: settings,
+      settings: srsColors != null && settings.enableCoordinates
+          ? settings.copyWith(enableCoordinates: false)
+          : settings,
     );
 
     final overlay = boardOverlay ?? (error != null ? _ErrorWidget(errorMessage: error!) : null);
@@ -70,7 +72,7 @@ class BoardWidget extends StatelessWidget {
     if (srsColors != null) {
       final base = Stack(
         children: [
-          SrsBoardBackground(size: size),
+          if (settings.colorScheme.lightSquare.a == 0) SrsBoardBackground(size: size),
           board,
         ],
       );

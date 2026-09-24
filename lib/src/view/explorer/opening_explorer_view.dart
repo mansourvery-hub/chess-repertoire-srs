@@ -1,13 +1,10 @@
-import 'package:chess_srs/src/model/auth/auth_controller.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
 import 'package:chess_srs/src/model/explorer/opening_explorer.dart';
 import 'package:chess_srs/src/model/explorer/opening_explorer_preferences.dart';
 import 'package:chess_srs/src/model/explorer/opening_explorer_repository.dart';
 import 'package:chess_srs/src/network/connectivity.dart';
-import 'package:chess_srs/src/styles/styles.dart';
 import 'package:chess_srs/src/theme.dart';
 import 'package:chess_srs/src/utils/l10n_context.dart';
-import 'package:chess_srs/src/view/auth/sign_in_options.dart';
 import 'package:chess_srs/src/view/explorer/opening_explorer_widgets.dart';
 import 'package:chess_srs/src/widgets/shimmer.dart';
 import 'package:dartchess/dartchess.dart';
@@ -57,11 +54,6 @@ class _OpeningExplorerState extends ConsumerState<OpeningExplorerView> {
 
   @override
   Widget build(BuildContext context) {
-    final isLoggedIn = ref.watch(isLoggedInProvider);
-    if (!isLoggedIn) {
-      return _buildListView(children: [_buildLoginPrompt(context, ref)]);
-    }
-
     if (widget.position.ply >= 50) {
       return _buildListView(children: [ExplorerMessage(context.l10n.maxDepthReached)]);
     }
@@ -180,37 +172,6 @@ class _OpeningExplorerState extends ConsumerState<OpeningExplorerView> {
         if (widget.opening != null) OpeningNameHeader(opening: widget.opening!),
         ...children,
       ],
-    );
-  }
-
-  Widget _buildLoginPrompt(BuildContext context, WidgetRef ref) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.explore_outlined, size: 40, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(height: 12),
-            Text(
-              context.l10n.openingExplorer,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'A free Lichess account is required to query the online opening database.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: textShade(context, Styles.subtitleOpacity), fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              icon: const Icon(Icons.login, size: 18),
-              label: Text(context.l10n.signIn),
-              onPressed: () => showSignInOptions(context, ref),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

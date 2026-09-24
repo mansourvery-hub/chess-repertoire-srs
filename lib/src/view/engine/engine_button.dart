@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:chess_srs/src/design/tokens.dart';
 import 'package:chess_srs/src/model/common/eval.dart';
 import 'package:chess_srs/src/model/engine/engine_utils.dart';
 import 'package:chess_srs/src/model/engine/evaluation_preferences.dart';
@@ -39,18 +40,21 @@ class _EngineButtonState extends ConsumerState<EngineButton> {
     );
     final eval = pickBestClientEval(localEval: localEval, savedEval: widget.savedEval);
 
+    final srs = SrsTheme.maybeOf(context);
+    final accent = srs?.accent ?? ColorScheme.of(context).primary;
+    final inactiveColor =
+        srs?.ink2 ?? IconTheme.of(context).color ?? TextTheme.of(context).bodyMedium!.color!;
+
     final newChipColor = prefs.isEnabled
         ? isComputing
-              ? ColorScheme.of(context).primary
-              : ColorScheme.of(context).primary.withValues(alpha: 0.65)
-        : IconTheme.of(context).color ?? TextTheme.of(context).bodyMedium!.color!;
+              ? accent
+              : accent.withValues(alpha: 0.65)
+        : inactiveColor;
 
     fromChipColor = toChipColor ?? newChipColor;
     toChipColor = newChipColor;
 
-    final textColor = prefs.isEnabled
-        ? ColorScheme.of(context).primary
-        : IconTheme.of(context).color ?? TextTheme.of(context).bodyMedium!.color!;
+    final textColor = prefs.isEnabled ? accent : inactiveColor;
 
     final loadingIndicator = SpinKitFadingFour(color: textColor.withValues(alpha: 0.7), size: 10);
 
@@ -78,6 +82,7 @@ class _EngineButtonState extends ConsumerState<EngineButton> {
               direction: PopoverDirection.top,
               width: 250,
               backgroundColor:
+                  srs?.surface ??
                   DialogTheme.of(context).backgroundColor ??
                   ColorScheme.of(context).surfaceContainerHigh,
               transitionDuration: Duration.zero,

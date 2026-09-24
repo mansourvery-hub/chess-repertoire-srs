@@ -142,7 +142,7 @@ sealed class BoardPrefs with _$BoardPrefs implements Serializable {
   const factory BoardPrefs({
     @JsonKey(defaultValue: PieceSet.cburnett, unknownEnumValue: PieceSet.cburnett)
     required PieceSet pieceSet,
-    @JsonKey(defaultValue: BoardTheme.brown, unknownEnumValue: BoardTheme.brown)
+    @JsonKey(defaultValue: BoardTheme.diagram, unknownEnumValue: BoardTheme.diagram)
     required BoardTheme boardTheme,
     bool? immersiveModeWhilePlaying,
     required bool hapticFeedback,
@@ -188,7 +188,7 @@ sealed class BoardPrefs with _$BoardPrefs implements Serializable {
 
   static const defaults = BoardPrefs(
     pieceSet: PieceSet.cburnett,
-    boardTheme: BoardTheme.brown,
+    boardTheme: BoardTheme.diagram,
     immersiveModeWhilePlaying: false,
     hapticFeedback: true,
     showLegalMoves: true,
@@ -217,9 +217,25 @@ sealed class BoardPrefs with _$BoardPrefs implements Serializable {
       brightness != kBoardDefaultBrightnessFilter || hue != kBoardDefaultHueFilter;
 
   ChessboardSettings toBoardSettings(Variant variant, {SrsColors? srsColors}) {
-    final colorScheme = srsColors != null ? srsBoardColorScheme(srsColors) : boardTheme.colors;
+    // If the user has explicitly selected a custom piece set other than the default (cburnett),
+    // respect the user's choice; otherwise use Diagram piece assets if srsColors is active.
+    final pieceAssets = (pieceSet != PieceSet.cburnett || srsColors == null)
+        ? pieceSet.assets
+        : srsPieceAssets(dark: srsColors.isDark);
+
+    // If the boardTheme is diagram (or fallback default), and srsColors is present,
+    // use Diagram's bespoke hatched color scheme.
+    // If the user selected an alternative theme (e.g. Wood, Blue, etc.), respect that choice.
+    final isDiagramOrFallback =
+        boardTheme == BoardTheme.diagram ||
+        boardTheme == BoardTheme.system ||
+        boardTheme == BoardTheme.brown;
+    final colorScheme = (isDiagramOrFallback && srsColors != null)
+        ? srsBoardColorScheme(srsColors)
+        : boardTheme.colors;
+
     return ChessboardSettings(
-      pieceAssets: srsColors != null ? srsPieceAssets(dark: srsColors.isDark) : pieceSet.assets,
+      pieceAssets: pieceAssets,
       colorScheme: colorScheme,
       brightness: brightness,
       hue: hue,
@@ -266,6 +282,7 @@ enum ShapeColor {
 
 /// The chessboard theme.
 enum BoardTheme {
+  diagram('Diagram', 'brown'),
   system('System', 'system'),
   brown('Brown', 'brown'),
   wood('Wood', 'wood'),
@@ -300,6 +317,8 @@ enum BoardTheme {
 
   ChessboardColorScheme get colors {
     switch (this) {
+      case BoardTheme.diagram:
+        return ChessboardColorScheme.brown;
       case BoardTheme.system:
         return getBoardColorScheme() ?? ChessboardColorScheme.brown;
       case BoardTheme.blue:
@@ -356,6 +375,24 @@ enum BoardTheme {
   }
 
   Widget get thumbnail => switch (this) {
+    BoardTheme.diagram => Builder(
+      builder: (context) {
+        final srsColors = SrsTheme.maybeOf(context) ?? SrsColors.light(kSrsDefaultAccent);
+        return SizedBox(
+          height: 44,
+          width: 44 * 6,
+          child: Row(
+            children: [
+              for (final c in const [1, 2, 3, 4, 5, 6])
+                Container(
+                  width: 44,
+                  color: c.isEven ? srsColors.squareDark : srsColors.squareLight,
+                ),
+            ],
+          ),
+        );
+      },
+    ),
     BoardTheme.system => SizedBox(
       height: 44,
       width: 44 * 6,

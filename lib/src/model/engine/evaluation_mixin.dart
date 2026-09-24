@@ -335,10 +335,6 @@ mixin EngineEvaluationMixin<T extends EvaluationMixinState<T>> on AnyNotifier<As
   }
 
   bool _canCloudEval() {
-    if (state.requireValue.currentPosition!.ply >= 15 &&
-        !state.requireValue.alwaysRequestCloudEval) {
-      return false;
-    }
     if (positionTree.nodeAt(state.requireValue.currentPath).eval is CloudEval) return false;
 
     // cloud eval does not support threefold repetition

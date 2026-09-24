@@ -24,12 +24,26 @@ class ReviewScopeDrawer extends ConsumerStatefulWidget {
   /// Displays the scope selector sheet.
   static Future<void> show(BuildContext context) {
     final c = context.srs;
-    return showModalBottomSheet<void>(
+    return showGeneralDialog<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
       barrierColor: c.scrim,
-      builder: (context) => const ReviewScopeDrawer(),
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        return const ReviewScopeDrawer();
+      },
+      transitionBuilder: (dialogContext, animation, secondaryAnimation, child) {
+        final isWide = MediaQuery.of(dialogContext).size.width >= 768;
+        if (isWide) {
+          return FadeTransition(opacity: animation, child: child);
+        }
+        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        return SlideTransition(
+          position: Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero).animate(curved),
+          child: FadeTransition(opacity: animation, child: child),
+        );
+      },
     );
   }
 
@@ -102,135 +116,219 @@ class _ReviewScopeDrawerState extends ConsumerState<ReviewScopeDrawer> {
         filteredOpeningHubs.isEmpty &&
         filteredStudies.isEmpty;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).pop(),
-      child: Align(
-        alignment: isWide ? Alignment.topLeft : Alignment.bottomCenter,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {},
-          child: Container(
-            width: maxWidth,
-            constraints: BoxConstraints(maxHeight: maxHeight),
-            margin: isWide
-                ? const EdgeInsets.only(top: 56, left: 26, bottom: 24)
-                : const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            decoration: BoxDecoration(
+    final content = Align(
+      alignment: isWide ? Alignment.topLeft : Alignment.bottomCenter,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {},
+        child: Container(
+          width: maxWidth,
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          margin: isWide
+              ? const EdgeInsets.only(top: 56, left: 26, bottom: 24)
+              : const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          decoration: BoxDecoration(
+            color: c.surface,
+            borderRadius: BorderRadius.circular(isWide ? 18 : 22),
+            border: Border.all(color: c.hairline, width: 1),
+            boxShadow: [BoxShadow(color: c.scrim, blurRadius: 30, offset: const Offset(0, 8))],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(isWide ? 18 : 22),
+            child: Material(
               color: c.surface,
-              borderRadius: BorderRadius.circular(isWide ? 18 : 22),
-              border: Border.all(color: c.hairline, width: 1),
-              boxShadow: [BoxShadow(color: c.scrim, blurRadius: 30, offset: const Offset(0, 8))],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(isWide ? 18 : 22),
-              child: Material(
-                color: c.surface,
-                child: SafeArea(
-                  top: false,
-                  bottom: !isWide,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Grab handle (mobile only)
-                      if (!isWide) ...[
-                        const SizedBox(height: 8),
-                        Container(
-                          width: 36,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: c.hairline,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-
-                      // Search field matching demo (.search)
+              child: SafeArea(
+                top: false,
+                bottom: !isWide,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Grab handle (mobile only)
+                    if (!isWide) ...[
+                      const SizedBox(height: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+                        width: 36,
+                        height: 4,
                         decoration: BoxDecoration(
-                          border: Border(bottom: BorderSide(color: c.hairlineSoft)),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Symbols.search_rounded, size: 20, color: c.ink3),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: TextField(
-                                controller: _searchController,
-                                autofocus: isWide,
-                                style: TextStyle(
-                                  fontFamily: SrsText.ui,
-                                  fontSize: 15.5,
-                                  color: c.ink,
-                                ),
-                                decoration: InputDecoration(
-                                  hintText: 'Search repertoires & hubs...',
-                                  hintStyle: TextStyle(
-                                    fontFamily: SrsText.ui,
-                                    fontSize: 15.5,
-                                    color: c.ink3,
-                                  ),
-                                  isDense: true,
-                                  border: InputBorder.none,
-                                  contentPadding: EdgeInsets.zero,
-                                ),
-                                onChanged: (text) => setState(() => _searchQuery = text),
-                              ),
-                            ),
-                            if (_searchQuery.isNotEmpty)
-                              IconButton(
-                                icon: Icon(Symbols.close_rounded, size: 18, color: c.ink3),
-                                tooltip: 'Clear search',
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() => _searchQuery = '');
-                                },
-                              ),
-                          ],
+                          color: c.hairline,
+                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
-                      Container(height: 1, color: c.hairline),
+                      const SizedBox(height: 8),
+                    ],
 
-                      // Scope list
-                      Expanded(
-                        child: hasNoResults
-                            ? Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(28.0),
-                                  child: Text(
-                                    'No repertoires matching "$_searchQuery"',
-                                    style: TextStyle(
-                                      fontFamily: SrsText.ui,
-                                      fontSize: 15,
-                                      color: c.ink2,
-                                    ),
+                    // Search field matching demo (.search)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+                      decoration: BoxDecoration(
+                        border: Border(bottom: BorderSide(color: c.hairlineSoft)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Symbols.search_rounded, size: 20, color: c.ink3),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              autofocus: isWide,
+                              style: TextStyle(
+                                fontFamily: SrsText.ui,
+                                fontSize: 15.5,
+                                color: c.ink,
+                              ),
+                              decoration: InputDecoration(
+                                hintText: 'Search repertoires & hubs...',
+                                hintStyle: TextStyle(
+                                  fontFamily: SrsText.ui,
+                                  fontSize: 15.5,
+                                  color: c.ink3,
+                                ),
+                                isDense: true,
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                              onChanged: (text) => setState(() => _searchQuery = text),
+                            ),
+                          ),
+                          if (_searchQuery.isNotEmpty)
+                            IconButton(
+                              icon: Icon(Symbols.close_rounded, size: 18, color: c.ink3),
+                              tooltip: 'Clear search',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _searchQuery = '');
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
+                    Container(height: 1, color: c.hairline),
+
+                    // Scope list
+                    Expanded(
+                      child: hasNoResults
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(28.0),
+                                child: Text(
+                                  'No repertoires matching "$_searchQuery"',
+                                  style: TextStyle(
+                                    fontFamily: SrsText.ui,
+                                    fontSize: 15,
+                                    color: c.ink2,
                                   ),
                                 ),
-                              )
-                            : ListView(
-                                padding: const EdgeInsets.symmetric(vertical: 4.0),
-                                children: [
-                                  // Group: Everywhere (All Studies)
-                                  if (showAllStudies) ...[
-                                    _buildGroupHeader('Everywhere', c),
+                              ),
+                            )
+                          : ListView(
+                              padding: const EdgeInsets.symmetric(vertical: 4.0),
+                              children: [
+                                // Group: Everywhere (All Studies)
+                                if (showAllStudies) ...[
+                                  _buildGroupHeader('Everywhere', c),
+                                  ListTile(
+                                    selected: isAllSelected,
+                                    selectedTileColor: c.accentSoft,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 18.0,
+                                      vertical: 2.0,
+                                    ),
+                                    leading: Icon(
+                                      Symbols.all_inclusive_rounded,
+                                      size: 20,
+                                      color: isAllSelected ? c.accent : c.ink,
+                                    ),
+                                    title: Text(
+                                      'All Studies',
+                                      style: TextStyle(
+                                        fontFamily: SrsText.ui,
+                                        fontSize: 15.5,
+                                        fontWeight: FontWeight.w500,
+                                        color: c.ink,
+                                      ),
+                                    ),
+                                    subtitle: reviewState.totalProgress.totalDecisions > 0
+                                        ? Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                '${reviewState.totalProgress.learnedDecisions}/${reviewState.totalProgress.totalDecisions} learned (${reviewState.totalProgress.progressPercentage}%)',
+                                                style: TextStyle(
+                                                  fontFamily: SrsText.ui,
+                                                  fontSize: 12.0,
+                                                  color: c.ink3,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              SrsMemoryBar(
+                                                width: 96,
+                                                height: 5,
+                                                gap: 2,
+                                                radius: 1,
+                                                retained:
+                                                    (reviewState.totalProgress.learnedDecisions -
+                                                            reviewState.totalProgress.dueDecisions)
+                                                        .clamp(
+                                                          0,
+                                                          reviewState.totalProgress.totalDecisions,
+                                                        ),
+                                                learning: reviewState.totalProgress.dueDecisions,
+                                                fresh:
+                                                    (reviewState.totalProgress.totalDecisions -
+                                                            reviewState
+                                                                .totalProgress
+                                                                .learnedDecisions)
+                                                        .clamp(
+                                                          0,
+                                                          reviewState.totalProgress.totalDecisions,
+                                                        ),
+                                              ),
+                                            ],
+                                          )
+                                        : Text(
+                                            'Combined pool of all active repertoires',
+                                            style: TextStyle(
+                                              fontFamily: SrsText.ui,
+                                              fontSize: 12.5,
+                                              color: c.ink3,
+                                            ),
+                                          ),
+                                    trailing: _buildDueNumeral(reviewState.totalDueCount, true, c),
+                                    onTap: () {
+                                      Navigator.of(context).pop();
+                                      ref
+                                          .read(reviewControllerProvider.notifier)
+                                          .changeScope(const ReviewScope.all());
+                                    },
+                                  ),
+                                ],
+
+                                // Group: Opening Hubs
+                                if (filteredOpeningHubs.isNotEmpty) ...[
+                                  _buildGroupHeader('Opening Hubs', c),
+                                  for (final entry in filteredOpeningHubs)
                                     ListTile(
-                                      selected: isAllSelected,
+                                      selected: reviewState.scope.openingFamily == entry.key,
                                       selectedTileColor: c.accentSoft,
                                       contentPadding: const EdgeInsets.symmetric(
                                         horizontal: 18.0,
                                         vertical: 2.0,
                                       ),
                                       leading: Icon(
-                                        Symbols.all_inclusive_rounded,
+                                        Symbols.category_rounded,
                                         size: 20,
-                                        color: isAllSelected ? c.accent : c.ink,
+                                        color: reviewState.scope.openingFamily == entry.key
+                                            ? c.accent
+                                            : c.ink2,
                                       ),
                                       title: Text(
-                                        'All Studies',
+                                        entry.key,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           fontFamily: SrsText.ui,
                                           fontSize: 15.5,
@@ -238,14 +336,26 @@ class _ReviewScopeDrawerState extends ConsumerState<ReviewScopeDrawer> {
                                           color: c.ink,
                                         ),
                                       ),
-                                      subtitle: reviewState.totalProgress.totalDecisions > 0
-                                          ? Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
+                                      subtitle: Builder(
+                                        builder: (context) {
+                                          final progress = reviewState.openingProgress[entry.key];
+                                          return Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                'Opening Hub',
+                                                style: TextStyle(
+                                                  fontFamily: SrsText.ui,
+                                                  fontSize: 12.5,
+                                                  color: c.ink3,
+                                                ),
+                                              ),
+                                              if (progress != null &&
+                                                  progress.totalDecisions > 0) ...[
                                                 const SizedBox(height: 2),
                                                 Text(
-                                                  '${reviewState.totalProgress.learnedDecisions}/${reviewState.totalProgress.totalDecisions} learned (${reviewState.totalProgress.progressPercentage}%)',
+                                                  '${progress.learnedDecisions}/${progress.totalDecisions} learned (${progress.progressPercentage}%)',
                                                   style: TextStyle(
                                                     fontFamily: SrsText.ui,
                                                     fontSize: 12.0,
@@ -259,239 +369,188 @@ class _ReviewScopeDrawerState extends ConsumerState<ReviewScopeDrawer> {
                                                   gap: 2,
                                                   radius: 1,
                                                   retained:
-                                                      (reviewState.totalProgress.learnedDecisions -
-                                                              reviewState
-                                                                  .totalProgress
-                                                                  .dueDecisions)
-                                                          .clamp(
-                                                            0,
-                                                            reviewState
-                                                                .totalProgress
-                                                                .totalDecisions,
-                                                          ),
-                                                  learning: reviewState.totalProgress.dueDecisions,
+                                                      (progress.learnedDecisions -
+                                                              progress.dueDecisions)
+                                                          .clamp(0, progress.totalDecisions),
+                                                  learning: progress.dueDecisions,
                                                   fresh:
-                                                      (reviewState.totalProgress.totalDecisions -
-                                                              reviewState
-                                                                  .totalProgress
-                                                                  .learnedDecisions)
-                                                          .clamp(
-                                                            0,
-                                                            reviewState
-                                                                .totalProgress
-                                                                .totalDecisions,
-                                                          ),
+                                                      (progress.totalDecisions -
+                                                              progress.learnedDecisions)
+                                                          .clamp(0, progress.totalDecisions),
                                                 ),
                                               ],
-                                            )
-                                          : Text(
-                                              'Combined pool of all active repertoires',
-                                              style: TextStyle(
-                                                fontFamily: SrsText.ui,
-                                                fontSize: 12.5,
-                                                color: c.ink3,
-                                              ),
-                                            ),
-                                      trailing: _buildDueNumeral(
-                                        reviewState.totalDueCount,
-                                        true,
-                                        c,
+                                            ],
+                                          );
+                                        },
                                       ),
+                                      trailing: _buildDueNumeral(entry.value, true, c),
                                       onTap: () {
                                         Navigator.of(context).pop();
                                         ref
                                             .read(reviewControllerProvider.notifier)
-                                            .changeScope(const ReviewScope.all());
+                                            .changeScope(ReviewScope.opening(entry.key));
                                       },
                                     ),
-                                  ],
+                                ],
 
-                                  // Group: Opening Hubs
-                                  if (filteredOpeningHubs.isNotEmpty) ...[
-                                    _buildGroupHeader('Opening Hubs', c),
-                                    for (final entry in filteredOpeningHubs)
-                                      ListTile(
-                                        selected: reviewState.scope.openingFamily == entry.key,
-                                        selectedTileColor: c.accentSoft,
-                                        contentPadding: const EdgeInsets.symmetric(
-                                          horizontal: 18.0,
-                                          vertical: 2.0,
-                                        ),
-                                        leading: Icon(
-                                          Symbols.category_rounded,
-                                          size: 20,
-                                          color: reviewState.scope.openingFamily == entry.key
-                                              ? c.accent
-                                              : c.ink2,
-                                        ),
-                                        title: Text(
-                                          entry.key,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontFamily: SrsText.ui,
-                                            fontSize: 15.5,
-                                            fontWeight: FontWeight.w500,
-                                            color: c.ink,
+                                // Group: Repertoires
+                                if (filteredStudies.isNotEmpty) ...[
+                                  _buildGroupHeader('Repertoires', c),
+                                  for (final study in filteredStudies)
+                                    Builder(
+                                      builder: (context) {
+                                        final due = reviewState.studyDueCounts[study.id] ?? 0;
+                                        final progress = reviewState.studyProgress[study.id];
+                                        final isSelected = reviewState.scope.studyId == study.id;
+                                        return ListTile(
+                                          selected: isSelected,
+                                          selectedTileColor: c.accentSoft,
+                                          contentPadding: const EdgeInsets.symmetric(
+                                            horizontal: 18.0,
+                                            vertical: 2.0,
                                           ),
-                                        ),
-                                        subtitle: Text(
-                                          'Opening Hub',
-                                          style: TextStyle(
-                                            fontFamily: SrsText.ui,
-                                            fontSize: 12.5,
-                                            color: c.ink3,
-                                          ),
-                                        ),
-                                        trailing: _buildDueNumeral(entry.value, true, c),
-                                        onTap: () {
-                                          Navigator.of(context).pop();
-                                          ref
-                                              .read(reviewControllerProvider.notifier)
-                                              .changeScope(ReviewScope.opening(entry.key));
-                                        },
-                                      ),
-                                  ],
-
-                                  // Group: Repertoires
-                                  if (filteredStudies.isNotEmpty) ...[
-                                    _buildGroupHeader('Repertoires', c),
-                                    for (final study in filteredStudies)
-                                      Builder(
-                                        builder: (context) {
-                                          final due = reviewState.studyDueCounts[study.id] ?? 0;
-                                          final progress = reviewState.studyProgress[study.id];
-                                          final isSelected = reviewState.scope.studyId == study.id;
-                                          return ListTile(
-                                            selected: isSelected,
-                                            selectedTileColor: c.accentSoft,
-                                            contentPadding: const EdgeInsets.symmetric(
-                                              horizontal: 18.0,
-                                              vertical: 2.0,
+                                          leading: IconButton(
+                                            icon: Icon(
+                                              study.isActive
+                                                  ? Symbols.check_circle_rounded
+                                                  : Symbols.pause_circle_outline_rounded,
+                                              size: 20,
+                                              color: study.isActive ? c.accent : c.ink3,
                                             ),
-                                            leading: IconButton(
-                                              icon: Icon(
-                                                study.isActive
-                                                    ? Symbols.check_circle_rounded
-                                                    : Symbols.pause_circle_outline_rounded,
-                                                size: 20,
-                                                color: study.isActive ? c.accent : c.ink3,
-                                              ),
-                                              tooltip: study.isActive
-                                                  ? 'Active in review pool (tap to suspend)'
-                                                  : 'Suspended from review pool (tap to activate)',
-                                              onPressed: () {
-                                                ref
-                                                    .read(reviewControllerProvider.notifier)
-                                                    .toggleStudyActive(study.id, !study.isActive);
-                                              },
-                                            ),
-                                            title: Text(
-                                              study.title,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontFamily: SrsText.ui,
-                                                fontSize: 15.5,
-                                                fontWeight: FontWeight.w500,
-                                                color: study.isActive ? c.ink : c.ink3,
-                                              ),
-                                            ),
-                                            subtitle: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                if (progress != null &&
-                                                    progress.totalDecisions > 0) ...[
-                                                  const SizedBox(height: 2),
-                                                  Text(
-                                                    '${progress.learnedDecisions}/${progress.totalDecisions} learned (${progress.progressPercentage}%)',
-                                                    style: TextStyle(
-                                                      fontFamily: SrsText.ui,
-                                                      fontSize: 12.0,
-                                                      color: c.ink3,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  SrsMemoryBar(
-                                                    width: 96,
-                                                    height: 5,
-                                                    gap: 2,
-                                                    radius: 1,
-                                                    retained:
-                                                        (progress.learnedDecisions -
-                                                                progress.dueDecisions)
-                                                            .clamp(0, progress.totalDecisions),
-                                                    learning: progress.dueDecisions,
-                                                    fresh:
-                                                        (progress.totalDecisions -
-                                                                progress.learnedDecisions)
-                                                            .clamp(0, progress.totalDecisions),
-                                                  ),
-                                                ] else
-                                                  Text(
-                                                    study.isActive ? 'No positions' : 'Paused',
-                                                    style: TextStyle(
-                                                      fontFamily: SrsText.ui,
-                                                      fontSize: 12.5,
-                                                      color: c.ink3,
-                                                    ),
-                                                  ),
-                                              ],
-                                            ),
-                                            trailing: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                _buildDueNumeral(due, study.isActive, c),
-                                                IconButton(
-                                                  icon: Icon(
-                                                    Symbols.more_vert_rounded,
-                                                    size: 20,
-                                                    color: c.ink2,
-                                                  ),
-                                                  tooltip: 'Study options',
-                                                  onPressed: () =>
-                                                      _showStudyActionsSheet(context, ref, study),
-                                                ),
-                                              ],
-                                            ),
-                                            onTap: () {
-                                              Navigator.of(context).pop();
+                                            tooltip: study.isActive
+                                                ? 'Active in review pool (tap to suspend)'
+                                                : 'Suspended from review pool (tap to activate)',
+                                            onPressed: () {
                                               ref
                                                   .read(reviewControllerProvider.notifier)
-                                                  .changeScope(ReviewScope.study(study.id));
+                                                  .toggleStudyActive(study.id, !study.isActive);
                                             },
-                                          );
-                                        },
-                                      ),
-                                  ],
+                                          ),
+                                          title: Text(
+                                            study.title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontFamily: SrsText.ui,
+                                              fontSize: 15.5,
+                                              fontWeight: FontWeight.w500,
+                                              color: study.isActive ? c.ink : c.ink3,
+                                            ),
+                                          ),
+                                          subtitle: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              if (progress != null &&
+                                                  progress.totalDecisions > 0) ...[
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  '${progress.learnedDecisions}/${progress.totalDecisions} learned (${progress.progressPercentage}%)',
+                                                  style: TextStyle(
+                                                    fontFamily: SrsText.ui,
+                                                    fontSize: 12.0,
+                                                    color: c.ink3,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                SrsMemoryBar(
+                                                  width: 96,
+                                                  height: 5,
+                                                  gap: 2,
+                                                  radius: 1,
+                                                  retained:
+                                                      (progress.learnedDecisions -
+                                                              progress.dueDecisions)
+                                                          .clamp(0, progress.totalDecisions),
+                                                  learning: progress.dueDecisions,
+                                                  fresh:
+                                                      (progress.totalDecisions -
+                                                              progress.learnedDecisions)
+                                                          .clamp(0, progress.totalDecisions),
+                                                ),
+                                              ] else
+                                                Text(
+                                                  study.isActive ? 'No positions' : 'Paused',
+                                                  style: TextStyle(
+                                                    fontFamily: SrsText.ui,
+                                                    fontSize: 12.5,
+                                                    color: c.ink3,
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                          trailing: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              _buildDueNumeral(due, study.isActive, c),
+                                              IconButton(
+                                                icon: Icon(
+                                                  Symbols.more_vert_rounded,
+                                                  size: 20,
+                                                  color: c.ink2,
+                                                ),
+                                                tooltip: 'Study options',
+                                                onPressed: () =>
+                                                    _showStudyActionsSheet(context, ref, study),
+                                              ),
+                                            ],
+                                          ),
+                                          onTap: () {
+                                            Navigator.of(context).pop();
+                                            ref
+                                                .read(reviewControllerProvider.notifier)
+                                                .changeScope(ReviewScope.study(study.id));
+                                          },
+                                        );
+                                      },
+                                    ),
                                 ],
-                              ),
-                      ),
+                              ],
+                            ),
+                    ),
 
-                      // Bottom action: Import PGN
-                      Container(height: 1, color: c.hairlineSoft),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 18.0, vertical: 10.0),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: SrsPillButton(
-                            label: 'Import PGN',
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                              RepertoireImportDialog.show(context);
-                            },
-                          ),
+                    // Bottom action: Import PGN
+                    Container(height: 1, color: c.hairlineSoft),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18.0, vertical: 10.0),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: SrsPillButton(
+                          label: 'Import PGN',
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            RepertoireImportDialog.show(context);
+                          },
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
         ),
       ),
+    );
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(context).pop(),
+          ),
+        ),
+        GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onVerticalDragEnd: (details) {
+            if ((details.primaryVelocity ?? 0) > 150) {
+              Navigator.of(context).pop();
+            }
+          },
+          child: content,
+        ),
+      ],
     );
   }
 

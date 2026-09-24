@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:chess_srs/src/constants.dart';
+import 'package:chess_srs/src/design/tokens.dart';
 import 'package:material_ui/material_ui.dart';
 
 /// A bottom bar that can be used in a [Scaffold.bottomNavigationBar].
@@ -34,19 +35,33 @@ class BottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget bar = BottomAppBar(
-      color: Theme.of(context).platform == TargetPlatform.iOS && cupertinoTransparent
-          ? (BottomAppBarTheme.of(context).color ?? ColorScheme.of(context).surface).withValues(
-              alpha: kCupertinoBarOpacity,
-            )
-          : null,
-      height: kBottomBarHeight,
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-      child: Row(
-        mainAxisAlignment: mainAxisAlignment,
-        children: expandChildren
-            ? children.map((child) => Expanded(child: child)).toList()
-            : children,
+    final srs = SrsTheme.maybeOf(context);
+    final borderColor =
+        srs?.hairline ?? Theme.of(context).dividerTheme.color ?? Theme.of(context).dividerColor;
+    final backgroundColor =
+        srs?.surface ??
+        (Theme.of(context).platform == TargetPlatform.iOS && cupertinoTransparent
+            ? (BottomAppBarTheme.of(context).color ?? ColorScheme.of(context).surface).withValues(
+                alpha: kCupertinoBarOpacity,
+              )
+            : null);
+
+    Widget bar = DecoratedBox(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        border: Border(top: BorderSide(color: borderColor, width: 0.5)),
+      ),
+      child: BottomAppBar(
+        color: Colors.transparent,
+        elevation: 0,
+        height: kBottomBarHeight,
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+        child: Row(
+          mainAxisAlignment: mainAxisAlignment,
+          children: expandChildren
+              ? children.map((child) => Expanded(child: child)).toList()
+              : children,
+        ),
       ),
     );
 
@@ -98,32 +113,43 @@ class BottomBarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primary = ColorScheme.of(context).primary;
+    final srs = SrsTheme.maybeOf(context);
+    final primary = srs?.accent ?? ColorScheme.of(context).primary;
+    final activeColor = srs?.ink ?? ColorScheme.of(context).onSurface;
+    final inactiveColor = srs?.ink3 ?? ColorScheme.of(context).onSurfaceVariant;
 
-    final labelFontSize = TextTheme.of(context).bodySmall?.fontSize;
+    final labelFontSize = TextTheme.of(context).bodySmall?.fontSize ?? 11.0;
 
     final child = Opacity(
-      opacity: enabled ? 1.0 : 0.4,
+      opacity: enabled ? 1.0 : 0.38,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Badge(
-            backgroundColor: ColorScheme.of(context).secondary,
+            backgroundColor: srs?.accent ?? ColorScheme.of(context).secondary,
             textStyle: TextStyle(
-              color: ColorScheme.of(context).onSecondary,
+              color: srs?.ground ?? ColorScheme.of(context).onSecondary,
               fontWeight: FontWeight.bold,
             ),
             isLabelVisible: badgeLabel != null,
             label: (badgeLabel != null) ? Text(badgeLabel!) : null,
-            child: Icon(icon, color: highlighted ? primary : null),
+            child: Icon(
+              icon,
+              size: 22,
+              color: highlighted ? primary : (enabled ? activeColor : inactiveColor),
+            ),
           ),
           if (showLabel)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              padding: const EdgeInsets.symmetric(horizontal: 4.0),
               child: Text(
                 label,
-                style: TextStyle(fontSize: labelFontSize, color: highlighted ? primary : null),
+                style: TextStyle(
+                  fontSize: labelFontSize,
+                  fontWeight: highlighted ? FontWeight.w600 : FontWeight.w500,
+                  color: highlighted ? primary : (enabled ? activeColor : inactiveColor),
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -143,7 +169,7 @@ class BottomBarButton extends StatelessWidget {
         message: label,
         triggerMode: showTooltip ? TooltipTriggerMode.longPress : TooltipTriggerMode.manual,
         child: InkWell(
-          borderRadius: BorderRadius.zero,
+          borderRadius: BorderRadius.circular(8),
           onTap: onTap,
           child: blink
               ? _AnimatedInvertBackground(color: primary.withValues(alpha: 0.2), child: child)

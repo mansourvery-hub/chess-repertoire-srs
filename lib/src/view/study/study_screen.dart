@@ -1,4 +1,6 @@
 import 'package:chess_srs/src/constants.dart';
+import 'package:chess_srs/src/design/board_background.dart';
+import 'package:chess_srs/src/design/tokens.dart';
 import 'package:chess_srs/src/model/auth/auth_controller.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
 import 'package:chess_srs/src/model/common/eval.dart';
@@ -75,19 +77,30 @@ class _StudyScreenLoader extends ConsumerWidget {
             child: AnalysisLayout(
               pov: Side.white,
               sideToMove: null,
-              boardBuilder: (context, boardSize, borderRadius) => StaticChessboard(
-                size: boardSize,
-                settings: StaticChessboardSettings.fromBoardSettings(
-                  boardPrefs
-                      .toBoardSettings(Variant.standard)
-                      .copyWith(
-                        borderRadius: borderRadius,
-                        boxShadow: borderRadius != null ? boardShadows : const <BoxShadow>[],
-                      ),
-                ),
-                orientation: Side.white,
-                fen: kEmptyFEN,
-              ),
+              boardBuilder: (context, boardSize, borderRadius) {
+                final srsColors = SrsTheme.maybeOf(context);
+                final settings = boardPrefs
+                    .toBoardSettings(Variant.standard, srsColors: srsColors)
+                    .copyWith(
+                      borderRadius: borderRadius,
+                      boxShadow: borderRadius != null ? boardShadows : const <BoxShadow>[],
+                    );
+                final board = StaticChessboard(
+                  size: boardSize,
+                  settings: StaticChessboardSettings.fromBoardSettings(settings),
+                  orientation: Side.white,
+                  fen: kEmptyFEN,
+                );
+                if (srsColors != null && settings.colorScheme.lightSquare.a == 0) {
+                  return Stack(
+                    children: [
+                      SrsBoardBackground(size: boardSize),
+                      board,
+                    ],
+                  );
+                }
+                return board;
+              },
               smallBoard: studyPrefs.smallBoard,
               children: const [Center(child: Text('Failed to load study.'))],
             ),
@@ -117,19 +130,30 @@ class _StudyScreenLoader extends ConsumerWidget {
             child: AnalysisLayout(
               pov: Side.white,
               sideToMove: null,
-              boardBuilder: (context, boardSize, borderRadius) => StaticChessboard(
-                size: boardSize,
-                settings: StaticChessboardSettings.fromBoardSettings(
-                  boardPrefs
-                      .toBoardSettings(Variant.standard)
-                      .copyWith(
-                        borderRadius: borderRadius,
-                        boxShadow: borderRadius != null ? boardShadows : const <BoxShadow>[],
-                      ),
-                ),
-                orientation: Side.white,
-                fen: kEmptyFEN,
-              ),
+              boardBuilder: (context, boardSize, borderRadius) {
+                final srsColors = SrsTheme.maybeOf(context);
+                final settings = boardPrefs
+                    .toBoardSettings(Variant.standard, srsColors: srsColors)
+                    .copyWith(
+                      borderRadius: borderRadius,
+                      boxShadow: borderRadius != null ? boardShadows : const <BoxShadow>[],
+                    );
+                final board = StaticChessboard(
+                  size: boardSize,
+                  settings: StaticChessboardSettings.fromBoardSettings(settings),
+                  orientation: Side.white,
+                  fen: kEmptyFEN,
+                );
+                if (srsColors != null && settings.colorScheme.lightSquare.a == 0) {
+                  return Stack(
+                    children: [
+                      SrsBoardBackground(size: boardSize),
+                      board,
+                    ],
+                  );
+                }
+                return board;
+              },
               smallBoard: studyPrefs.smallBoard,
               children: const [Center(child: CircularProgressIndicator.adaptive())],
             ),

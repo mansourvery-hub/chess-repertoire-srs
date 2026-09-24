@@ -119,7 +119,7 @@ class SrsReviewSide extends StatelessWidget {
     required this.wide,
     required this.lineFontSize,
     required this.meta,
-    required this.line,
+    this.line,
     required this.slot,
     required this.actions,
   });
@@ -127,7 +127,7 @@ class SrsReviewSide extends StatelessWidget {
   final bool wide;
   final double lineFontSize;
   final Widget meta; // context label + "White to play" (stacked when wide, one row when narrow)
-  final Widget line; // SrsNotationLine
+  final Widget? line; // SrsNotationLine or null if disabled
   final Widget slot; // answer OR note OR SizedBox.shrink()
   final Widget actions; // Skip on the left, Continue on the right; min height 56
 
@@ -141,20 +141,22 @@ class SrsReviewSide extends StatelessWidget {
           padding: EdgeInsets.only(top: wide ? 2 : 0),
           child: meta,
         ),
-        SizedBox(height: wide ? 22 : 8),
-        ConstrainedBox(
-          constraints: BoxConstraints(minHeight: lineH * 2),
-          child: line,
-        ),
+        if (line != null) ...[
+          SizedBox(height: wide ? 22 : 8),
+          ConstrainedBox(
+            constraints: BoxConstraints(minHeight: lineH * 2),
+            child: line,
+          ),
+        ],
         Expanded(
           child: wide
               ? Padding(
-                  padding: const EdgeInsets.only(top: 26),
+                  padding: EdgeInsets.only(top: line != null ? 26 : 14),
                   child: SingleChildScrollView(child: slot),
                 )
               : _BottomFade(
                   child: Padding(
-                    padding: const EdgeInsets.only(top: 10, bottom: 22),
+                    padding: EdgeInsets.only(top: line != null ? 10 : 8, bottom: 22),
                     child: SingleChildScrollView(child: slot),
                   ),
                 ),

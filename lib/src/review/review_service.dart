@@ -48,6 +48,7 @@ class DueCountsSummary {
     required this.openingDueCounts,
     this.studyProgress = const {},
     this.chapterProgress = const {},
+    this.openingProgress = const {},
   });
 
   final int totalDueCount;
@@ -55,6 +56,7 @@ class DueCountsSummary {
   final Map<String, int> openingDueCounts;
   final Map<String, RepertoireProgress> studyProgress;
   final Map<String, RepertoireProgress> chapterProgress;
+  final Map<String, RepertoireProgress> openingProgress;
 }
 
 class ReviewService {
@@ -269,6 +271,8 @@ class ReviewService {
       }
     }
     final openingDueCounts = <String, int>{for (final op in openingFamilies) op: 0};
+    final openingTotals = <String, int>{for (final op in openingFamilies) op: 0};
+    final openingLearned = <String, int>{for (final op in openingFamilies) op: 0};
 
     var totalDueCount = 0;
     final accountedDueCanonicalIds = <String>{};
@@ -293,14 +297,23 @@ class ReviewService {
         chapterDue[d.chapterId] = (chapterDue[d.chapterId] ?? 0) + 1;
       }
 
+      final opening = chapterOpenings[d.chapterId]?.trim();
+      final isActiveStudy = activeStudyIds.contains(d.studyId);
+
+      if (isActiveStudy && opening != null && opening.isNotEmpty) {
+        if (openingTotals.containsKey(opening)) {
+          openingTotals[opening] = (openingTotals[opening] ?? 0) + 1;
+          if (isLearned) {
+            openingLearned[opening] = (openingLearned[opening] ?? 0) + 1;
+          }
+        }
+      }
+
       if (!isDue) continue;
 
       if (studyDueCounts.containsKey(d.studyId)) {
         studyDueCounts[d.studyId] = (studyDueCounts[d.studyId] ?? 0) + 1;
       }
-
-      final opening = chapterOpenings[d.chapterId]?.trim();
-      final isActiveStudy = activeStudyIds.contains(d.studyId);
 
       if (isActiveStudy && opening != null && opening.isNotEmpty) {
         if (openingDueCounts.containsKey(opening)) {
@@ -341,6 +354,15 @@ class ReviewService {
         ),
     };
 
+    final openingProgress = <String, RepertoireProgress>{
+      for (final op in openingFamilies)
+        op: RepertoireProgress(
+          totalDecisions: openingTotals[op] ?? 0,
+          learnedDecisions: openingLearned[op] ?? 0,
+          dueDecisions: openingDueCounts[op] ?? 0,
+        ),
+    };
+
     final effectiveTotalDue = remainingDailyQuota != null && remainingDailyQuota >= 0
         ? math.min(totalDueCount, remainingDailyQuota)
         : totalDueCount;
@@ -351,6 +373,7 @@ class ReviewService {
       openingDueCounts: openingDueCounts,
       studyProgress: studyProgress,
       chapterProgress: chapterProgress,
+      openingProgress: openingProgress,
     );
   }
 

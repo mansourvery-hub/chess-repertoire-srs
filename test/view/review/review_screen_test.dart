@@ -782,11 +782,10 @@ void main() {
         expect(board.shapes, isNotEmpty);
         expect(find.text('Attacks the center'), findsOneWidget);
 
-        // Tap the quick toggle button in overflow sheet
-        await tester.tap(find.byTooltip('Library and settings'));
-        await tester.pumpAndSettle();
-        expect(find.text('Hide annotations'), findsOneWidget);
-        await tester.tap(find.text('Hide annotations'));
+        // Toggle annotations and PGN comments via study preferences provider
+        final container = ProviderScope.containerOf(tester.element(find.byType(ReviewScreen)));
+        await container.read(studyPreferencesProvider.notifier).setShowAnnotations(false);
+        await container.read(studyPreferencesProvider.notifier).togglePgnComments();
         await tester.pumpAndSettle();
 
         // Shapes and comment text are hidden in real time!
@@ -794,11 +793,9 @@ void main() {
         expect(board.shapes, isEmpty);
         expect(find.text('Attacks the center'), findsNothing);
 
-        // Tap the quick toggle again to re-enable
-        await tester.tap(find.byTooltip('Library and settings'));
-        await tester.pumpAndSettle();
-        expect(find.text('Show annotations'), findsOneWidget);
-        await tester.tap(find.text('Show annotations'));
+        // Re-enable annotations and PGN comments
+        await container.read(studyPreferencesProvider.notifier).setShowAnnotations(true);
+        await container.read(studyPreferencesProvider.notifier).togglePgnComments();
         await tester.pumpAndSettle();
 
         // Shapes and comment text reappear
@@ -1027,8 +1024,8 @@ void main() {
       await tester.tap(find.byTooltip('Library and settings'));
       await tester.pumpAndSettle();
 
-      expect(find.text('SRS Settings'), findsOneWidget);
-      await tester.tap(find.text('SRS Settings'));
+      expect(find.text('Settings'), findsOneWidget);
+      await tester.tap(find.text('Settings'));
       await tester.pumpAndSettle();
 
       expect(find.byType(SrsSettingsScreen), findsOneWidget);
@@ -1211,7 +1208,15 @@ void main() {
         expect(find.byType(SrsReviewLayout), findsOneWidget);
         expect(find.byType(Chessboard), findsOneWidget);
         expect(find.text('White to play'), findsOneWidget);
+        // By default, showMoveHistory is false
+        expect(find.byType(SrsNotationLine), findsNothing);
+
+        // Enabling showMoveHistory shows the notation line
+        final container = ProviderScope.containerOf(tester.element(find.byType(ReviewScreen)));
+        await container.read(studyPreferencesProvider.notifier).setShowMoveHistory(true);
+        await tester.pumpAndSettle();
         expect(find.byType(SrsNotationLine), findsOneWidget);
+
         expect(find.widgetWithText(SrsTextButton, 'Skip'), findsOneWidget);
 
         // Play 1. e4

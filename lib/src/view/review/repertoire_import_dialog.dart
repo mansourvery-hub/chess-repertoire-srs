@@ -34,13 +34,25 @@ class RepertoireImportDialog extends ConsumerStatefulWidget {
     Side? initialSide,
   }) {
     final c = context.srs;
-    return showModalBottomSheet<void>(
+    return showGeneralDialog<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
       barrierColor: c.scrim,
-      builder: (context) =>
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) =>
           RepertoireImportDialog(initialSource: initialSource, initialSide: initialSide),
+      transitionBuilder: (dialogContext, animation, secondaryAnimation, child) {
+        final isWide = MediaQuery.of(dialogContext).size.width >= 768;
+        if (isWide) {
+          return FadeTransition(opacity: animation, child: child);
+        }
+        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        return SlideTransition(
+          position: Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero).animate(curved),
+          child: FadeTransition(opacity: animation, child: child),
+        );
+      },
     );
   }
 
@@ -208,219 +220,215 @@ class _RepertoireImportDialogState extends ConsumerState<RepertoireImportDialog>
     final bottomInset = mediaQuery.viewInsets.bottom;
     final maxWidth = isWide ? math.min(520.0, mediaQuery.size.width - 48.0) : double.infinity;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).pop(),
-      child: Align(
-        alignment: isWide ? Alignment.center : Alignment.bottomCenter,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {},
-          child: Container(
-            width: maxWidth,
-            constraints: BoxConstraints(maxHeight: mediaQuery.size.height * 0.88),
-            margin: isWide ? const EdgeInsets.all(24) : const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            decoration: BoxDecoration(
+    final content = Align(
+      alignment: isWide ? Alignment.center : Alignment.bottomCenter,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {},
+        child: Container(
+          width: maxWidth,
+          constraints: BoxConstraints(maxHeight: mediaQuery.size.height * 0.88),
+          margin: isWide ? const EdgeInsets.all(24) : const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          decoration: BoxDecoration(
+            color: c.surface,
+            borderRadius: BorderRadius.circular(isWide ? 20 : 22),
+            border: Border.all(color: c.hairline, width: 1),
+            boxShadow: [BoxShadow(color: c.scrim, blurRadius: 28, offset: const Offset(0, 8))],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(isWide ? 20 : 22),
+            child: Material(
               color: c.surface,
-              borderRadius: BorderRadius.circular(isWide ? 20 : 22),
-              border: Border.all(color: c.hairline, width: 1),
-              boxShadow: [BoxShadow(color: c.scrim, blurRadius: 28, offset: const Offset(0, 8))],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(isWide ? 20 : 22),
-              child: Material(
-                color: c.surface,
-                child: SafeArea(
-                  top: false,
-                  bottom: !isWide,
-                  child: SingleChildScrollView(
-                    padding: EdgeInsets.only(
-                      left: 20.0,
-                      right: 20.0,
-                      top: 16.0,
-                      bottom: bottomInset + 20.0,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (!isWide) ...[
-                          Center(
-                            child: Container(
-                              width: 36,
-                              height: 4,
-                              decoration: BoxDecoration(
-                                color: c.hairline,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
+              child: SafeArea(
+                top: false,
+                bottom: !isWide,
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.only(
+                    left: 20.0,
+                    right: 20.0,
+                    top: 16.0,
+                    bottom: bottomInset + 20.0,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (!isWide) ...[
+                        Center(
+                          child: Container(
+                            width: 36,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: c.hairline,
+                              borderRadius: BorderRadius.circular(2),
                             ),
                           ),
-                          const SizedBox(height: 12),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Import Repertoire', style: SrsText.titleSmall(c.ink)),
+                          IconButton(
+                            icon: Icon(Symbols.close_rounded, color: c.ink2),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
                         ],
+                      ),
+                      const SizedBox(height: 14.0),
+                      SrsSegmented<ImportSource>(
+                        options: const {
+                          ImportSource.lichess: 'Lichess Study',
+                          ImportSource.file: 'PGN Text / File',
+                        },
+                        value: _importSource,
+                        onChanged: (source) => setState(() => _importSource = source),
+                      ),
+                      const SizedBox(height: 16.0),
+                      if (_importSource == ImportSource.lichess) ...[
+                        TextField(
+                          controller: _lichessUrlController,
+                          decoration: InputDecoration(
+                            labelText: 'Lichess Study URL or ID',
+                            hintText: 'https://lichess.org/study/... or 8-char ID',
+                            prefixIcon: Icon(Symbols.link_rounded, color: c.ink2),
+                            suffixIcon: IconButton(
+                              icon: Icon(Symbols.content_paste_rounded, color: c.ink2),
+                              tooltip: 'Paste from clipboard',
+                              onPressed: () async {
+                                final data = await Clipboard.getData(Clipboard.kTextPlain);
+                                if (data?.text != null && mounted) {
+                                  setState(() => _lichessUrlController.text = data!.text!.trim());
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14.0),
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('Import Repertoire', style: SrsText.titleSmall(c.ink)),
-                            IconButton(
-                              icon: Icon(Symbols.close_rounded, color: c.ink2),
-                              onPressed: () => Navigator.of(context).pop(),
+                            Text(
+                              'Train as:',
+                              style: TextStyle(
+                                fontFamily: SrsText.ui,
+                                fontWeight: FontWeight.w500,
+                                color: c.ink,
+                              ),
+                            ),
+                            const Spacer(),
+                            SrsSegmented<Side?>(
+                              options: const {
+                                null: 'Auto',
+                                Side.white: 'White',
+                                Side.black: 'Black',
+                              },
+                              value: _repertoireSide,
+                              onChanged: (side) => setState(() => _repertoireSide = side),
                             ),
                           ],
                         ),
                         const SizedBox(height: 14.0),
-                        SrsSegmented<ImportSource>(
-                          options: const {
-                            ImportSource.lichess: 'Lichess Study',
-                            ImportSource.file: 'PGN Text / File',
-                          },
-                          value: _importSource,
-                          onChanged: (source) => setState(() => _importSource = source),
+                        TextField(
+                          controller: _titleController,
+                          decoration: const InputDecoration(
+                            labelText: 'Study Title (optional)',
+                            hintText: 'Derived from Lichess if left blank',
+                          ),
+                        ),
+                        const SizedBox(height: 18.0),
+                        SizedBox(
+                          height: 46,
+                          child: FilledButton.icon(
+                            icon: _isImporting
+                                ? SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: c.ground,
+                                    ),
+                                  )
+                                : const Icon(Symbols.download_rounded),
+                            label: Text(
+                              _isImporting
+                                  ? 'Fetching from Lichess...'
+                                  : 'Fetch & Import from Lichess',
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
+                            ),
+                            onPressed: _isImporting ? null : _handleLichessImport,
+                          ),
+                        ),
+                      ] else ...[
+                        TextField(
+                          controller: _titleController,
+                          decoration: const InputDecoration(
+                            labelText: 'Study Title (optional)',
+                            hintText: 'e.g. French Defense / 1.d4 Repertoire',
+                          ),
+                        ),
+                        const SizedBox(height: 14.0),
+                        Row(
+                          children: [
+                            Text(
+                              'Train as:',
+                              style: TextStyle(
+                                fontFamily: SrsText.ui,
+                                fontWeight: FontWeight.w500,
+                                color: c.ink,
+                              ),
+                            ),
+                            const Spacer(),
+                            SrsSegmented<Side?>(
+                              options: const {
+                                null: 'Auto',
+                                Side.white: 'White',
+                                Side.black: 'Black',
+                              },
+                              value: _repertoireSide,
+                              onChanged: (side) => setState(() => _repertoireSide = side),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14.0),
+                        TextField(
+                          controller: _pgnController,
+                          maxLines: 6,
+                          decoration: const InputDecoration(
+                            labelText: 'PGN text',
+                            hintText: 'Paste PGN moves here...',
+                            alignLabelWithHint: true,
+                          ),
+                        ),
+                        const SizedBox(height: 14.0),
+                        OutlinedButton.icon(
+                          icon: const Icon(Symbols.upload_file_rounded),
+                          label: const Text('Pick .pgn file from disk'),
+                          onPressed: _isImporting ? null : _pickPgnFile,
                         ),
                         const SizedBox(height: 16.0),
-                        if (_importSource == ImportSource.lichess) ...[
-                          TextField(
-                            controller: _lichessUrlController,
-                            decoration: InputDecoration(
-                              labelText: 'Lichess Study URL or ID',
-                              hintText: 'https://lichess.org/study/... or 8-char ID',
-                              prefixIcon: Icon(Symbols.link_rounded, color: c.ink2),
-                              suffixIcon: IconButton(
-                                icon: Icon(Symbols.content_paste_rounded, color: c.ink2),
-                                tooltip: 'Paste from clipboard',
-                                onPressed: () async {
-                                  final data = await Clipboard.getData(Clipboard.kTextPlain);
-                                  if (data?.text != null && mounted) {
-                                    setState(() => _lichessUrlController.text = data!.text!.trim());
-                                  }
-                                },
-                              ),
+                        SizedBox(
+                          height: 46,
+                          child: FilledButton.icon(
+                            icon: _isImporting
+                                ? SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: c.ground,
+                                    ),
+                                  )
+                                : const Icon(Symbols.download_done_rounded),
+                            label: Text(
+                              _isImporting ? 'Importing...' : 'Import and Start Review',
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
                             ),
+                            onPressed: _isImporting ? null : _handleFileImport,
                           ),
-                          const SizedBox(height: 14.0),
-                          Row(
-                            children: [
-                              Text(
-                                'Train as:',
-                                style: TextStyle(
-                                  fontFamily: SrsText.ui,
-                                  fontWeight: FontWeight.w500,
-                                  color: c.ink,
-                                ),
-                              ),
-                              const Spacer(),
-                              SrsSegmented<Side?>(
-                                options: const {
-                                  null: 'Auto',
-                                  Side.white: 'White',
-                                  Side.black: 'Black',
-                                },
-                                value: _repertoireSide,
-                                onChanged: (side) => setState(() => _repertoireSide = side),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 14.0),
-                          TextField(
-                            controller: _titleController,
-                            decoration: const InputDecoration(
-                              labelText: 'Study Title (optional)',
-                              hintText: 'Derived from Lichess if left blank',
-                            ),
-                          ),
-                          const SizedBox(height: 18.0),
-                          SizedBox(
-                            height: 46,
-                            child: FilledButton.icon(
-                              icon: _isImporting
-                                  ? SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: c.ground,
-                                      ),
-                                    )
-                                  : const Icon(Symbols.download_rounded),
-                              label: Text(
-                                _isImporting
-                                    ? 'Fetching from Lichess...'
-                                    : 'Fetch & Import from Lichess',
-                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
-                              ),
-                              onPressed: _isImporting ? null : _handleLichessImport,
-                            ),
-                          ),
-                        ] else ...[
-                          TextField(
-                            controller: _titleController,
-                            decoration: const InputDecoration(
-                              labelText: 'Study Title (optional)',
-                              hintText: 'e.g. French Defense / 1.d4 Repertoire',
-                            ),
-                          ),
-                          const SizedBox(height: 14.0),
-                          Row(
-                            children: [
-                              Text(
-                                'Train as:',
-                                style: TextStyle(
-                                  fontFamily: SrsText.ui,
-                                  fontWeight: FontWeight.w500,
-                                  color: c.ink,
-                                ),
-                              ),
-                              const Spacer(),
-                              SrsSegmented<Side?>(
-                                options: const {
-                                  null: 'Auto',
-                                  Side.white: 'White',
-                                  Side.black: 'Black',
-                                },
-                                value: _repertoireSide,
-                                onChanged: (side) => setState(() => _repertoireSide = side),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 14.0),
-                          TextField(
-                            controller: _pgnController,
-                            maxLines: 6,
-                            decoration: const InputDecoration(
-                              labelText: 'PGN text',
-                              hintText: 'Paste PGN moves here...',
-                              alignLabelWithHint: true,
-                            ),
-                          ),
-                          const SizedBox(height: 14.0),
-                          OutlinedButton.icon(
-                            icon: const Icon(Symbols.upload_file_rounded),
-                            label: const Text('Pick .pgn file from disk'),
-                            onPressed: _isImporting ? null : _pickPgnFile,
-                          ),
-                          const SizedBox(height: 16.0),
-                          SizedBox(
-                            height: 46,
-                            child: FilledButton.icon(
-                              icon: _isImporting
-                                  ? SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: c.ground,
-                                      ),
-                                    )
-                                  : const Icon(Symbols.download_done_rounded),
-                              label: Text(
-                                _isImporting ? 'Importing...' : 'Import and Start Review',
-                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
-                              ),
-                              onPressed: _isImporting ? null : _handleFileImport,
-                            ),
-                          ),
-                        ],
+                        ),
                       ],
-                    ),
+                    ],
                   ),
                 ),
               ),
@@ -428,6 +436,26 @@ class _RepertoireImportDialogState extends ConsumerState<RepertoireImportDialog>
           ),
         ),
       ),
+    );
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(context).pop(),
+          ),
+        ),
+        GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onVerticalDragEnd: (details) {
+            if ((details.primaryVelocity ?? 0) > 150) {
+              Navigator.of(context).pop();
+            }
+          },
+          child: content,
+        ),
+      ],
     );
   }
 }

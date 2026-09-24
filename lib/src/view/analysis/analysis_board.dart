@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:chess_srs/src/constants.dart';
+import 'package:chess_srs/src/design/board_background.dart';
+import 'package:chess_srs/src/design/tokens.dart';
 import 'package:chess_srs/src/model/analysis/common_analysis_prefs.dart';
 import 'package:chess_srs/src/model/analysis/common_analysis_state.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
@@ -9,7 +11,6 @@ import 'package:chess_srs/src/model/engine/engine_utils.dart';
 import 'package:chess_srs/src/model/engine/evaluation_preferences.dart';
 import 'package:chess_srs/src/model/engine/position_evaluator.dart';
 import 'package:chess_srs/src/model/settings/board_preferences.dart';
-import 'package:chess_srs/src/styles/lichess_colors.dart';
 import 'package:chess_srs/src/view/analysis/game_analysis_board.dart';
 import 'package:chess_srs/src/view/analysis/retro_screen.dart';
 import 'package:chess_srs/src/view/study/study_screen.dart';
@@ -219,8 +220,8 @@ abstract class AnalysisBoardState<
         localEval!.bestMoves,
         currentPosition.turn.opposite,
         pieceAssets,
-        bestMoveColor: LichessColors.red.withValues(alpha: 0.6),
-        nextBestMovesColor: LichessColors.red.withValues(alpha: 0.4),
+        bestMoveColor: const Color(0xFFB3261E).withValues(alpha: 0.6),
+        nextBestMovesColor: const Color(0xFFB3261E).withValues(alpha: 0.4),
       );
       return {...threatMoveShapes, if (bestMoveShapes.isNotEmpty) bestMoveShapes.first};
     }
@@ -230,13 +231,24 @@ abstract class AnalysisBoardState<
 
   @override
   Widget build(BuildContext context) {
+    final srsColors = SrsTheme.maybeOf(context);
     final boardPrefs = ref.watch(boardPreferencesProvider);
+    final boardSettings = boardPrefs
+        .toBoardSettings(analysisState.variant, srsColors: srsColors)
+        .copyWith(
+          borderRadius: widget.boardRadius,
+          boxShadow: widget.boardRadius != null ? boardShadows : const <BoxShadow>[],
+          drawShape: DrawShapeOptions(
+            enable: boardPrefs.enableShapeDrawings,
+            newShapeColor: boardPrefs.shapeColor.color,
+          ),
+        );
 
     final currentNode = analysisState.currentNode;
     final annotation = showAnnotations ? makeAnnotation(currentNode.nags) : null;
     final sanMove = currentNode.sanMove;
 
-    final externalShapes = {..._bestMoveShapes(boardPrefs.pieceSet.assets), ...extraShapes.unlock};
+    final externalShapes = {..._bestMoveShapes(boardSettings.pieceAssets), ...extraShapes.unlock};
     final boardAnnotations = sanMove != null && annotation != null
         ? (sanMove.isCastles && altCastles.containsKey(sanMove.move.uci)
               ? {Move.parse(altCastles[sanMove.move.uci]!)!.to: annotation}
@@ -247,21 +259,23 @@ abstract class AnalysisBoardState<
     // fall back to a non-interactive board rather than crashing.
     final ctrl = _controller;
     if (ctrl == null) {
-      return StaticChessboard(
+      final staticBoard = StaticChessboard(
         size: widget.boardSize,
         orientation: analysisState.pov,
         fen: fen,
         lastMove: analysisState.lastMove,
         shapes: externalShapes,
-        settings: StaticChessboardSettings.fromBoardSettings(
-          boardPrefs
-              .toBoardSettings(analysisState.variant)
-              .copyWith(
-                borderRadius: widget.boardRadius,
-                boxShadow: widget.boardRadius != null ? boardShadows : const <BoxShadow>[],
-              ),
-        ),
+        settings: StaticChessboardSettings.fromBoardSettings(boardSettings),
       );
+      if (srsColors != null && boardSettings.colorScheme.lightSquare.a == 0) {
+        return Stack(
+          children: [
+            SrsBoardBackground(size: widget.boardSize),
+            staticBoard,
+          ],
+        );
+      }
+      return staticBoard;
     }
 
     return BoardWidget(
@@ -270,16 +284,7 @@ abstract class AnalysisBoardState<
       controller: ctrl,
       onMove: (move, {viaDragAndDrop}) => onUserMove(move),
       shapes: externalShapes,
-      settings: boardPrefs
-          .toBoardSettings(analysisState.variant)
-          .copyWith(
-            borderRadius: widget.boardRadius,
-            boxShadow: widget.boardRadius != null ? boardShadows : const <BoxShadow>[],
-            drawShape: DrawShapeOptions(
-              enable: boardPrefs.enableShapeDrawings,
-              newShapeColor: boardPrefs.shapeColor.color,
-            ),
-          ),
+      settings: boardSettings,
       annotations: boardAnnotations,
     );
   }

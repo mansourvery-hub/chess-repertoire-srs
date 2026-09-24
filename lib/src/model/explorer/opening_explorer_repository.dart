@@ -1,7 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:chess_srs/src/constants.dart';
-import 'package:chess_srs/src/model/common/chess.dart' show Variant;
+import 'package:chess_srs/src/model/analysis/opening_service.dart';
+import 'package:chess_srs/src/model/auth/auth_controller.dart';
+import 'package:chess_srs/src/model/common/chess.dart' show LightOpening, Variant;
 import 'package:chess_srs/src/model/common/speed.dart';
 import 'package:chess_srs/src/model/explorer/opening_explorer.dart';
 import 'package:chess_srs/src/model/explorer/opening_explorer_preferences.dart';
@@ -38,51 +42,83 @@ class OpeningExplorer extends AsyncNotifier<({OpeningExplorerEntry entry, bool i
     final prefs = ref.watch(openingExplorerPreferencesProvider);
     final db = _openingExplorerDatabaseFor(prefs.db, variant);
     final repository = ref.read(openingExplorerRepositoryProvider);
+    final isLoggedIn = ref.watch(isLoggedInProvider);
+
+    // If the user is unauthenticated, query the open database out-of-the-box.
+    if (!isLoggedIn && (db == OpeningDatabase.master || db == OpeningDatabase.lichess)) {
+      final entry = await repository.getOpenDatabase(fen, variant: variant);
+      return (entry: entry, isIndexing: false);
+    }
+
     switch (db) {
       case OpeningDatabase.master:
-        final openingExplorer = await repository.getMasterDatabase(
-          fen,
-          since: prefs.masterDb.sinceYear,
-        );
-        return (entry: openingExplorer, isIndexing: false);
+        try {
+          final openingExplorer = await repository.getMasterDatabase(
+            fen,
+            since: prefs.masterDb.sinceYear,
+          );
+          return (entry: openingExplorer, isIndexing: false);
+        } catch (_) {
+          final entry = await repository.getOpenDatabase(fen, variant: variant);
+          return (entry: entry, isIndexing: false);
+        }
       case OpeningDatabase.lichess:
-        final openingExplorer = await repository.getLichessDatabase(
-          fen,
-          variant: variant,
-          speeds: prefs.lichessDb.speeds,
-          ratings: prefs.lichessDb.ratings,
-          since: prefs.lichessDb.since,
-        );
-        return (entry: openingExplorer, isIndexing: false);
+        try {
+          final openingExplorer = await repository.getLichessDatabase(
+            fen,
+            variant: variant,
+            speeds: prefs.lichessDb.speeds,
+            ratings: prefs.lichessDb.ratings,
+            since: prefs.lichessDb.since,
+          );
+          return (entry: openingExplorer, isIndexing: false);
+        } catch (_) {
+          final entry = await repository.getOpenDatabase(fen, variant: variant);
+          return (entry: entry, isIndexing: false);
+        }
       case OpeningDatabase.player:
-        final openingExplorerStream = await repository.getPlayerDatabase(
-          fen,
-          variant: variant,
-          // null check handled by widget
-          usernameOrId: prefs.playerDb.username!,
-          color: prefs.playerDb.side,
-          speeds: prefs.playerDb.speeds,
-          gameModes: prefs.playerDb.gameModes,
-          since: prefs.playerDb.since,
-        );
+        if (prefs.playerDb.username == null) {
+          final entry = await repository.getOpenDatabase(fen, variant: variant);
+          return (entry: entry, isIndexing: false);
+        }
+        try {
+          final openingExplorerStream = await repository.getPlayerDatabase(
+            fen,
+            variant: variant,
+            // null check handled by widget
+            usernameOrId: prefs.playerDb.username!,
+            color: prefs.playerDb.side,
+            speeds: prefs.playerDb.speeds,
+            gameModes: prefs.playerDb.gameModes,
+            since: prefs.playerDb.since,
+          );
 
-        _openingExplorerSubscription = openingExplorerStream.listen(
-          (openingExplorer) => state = AsyncValue.data((entry: openingExplorer, isIndexing: true)),
-          onDone: () => state.value != null
-              ? state = AsyncValue.data((entry: state.value!.entry, isIndexing: false))
-              : state = AsyncValue.error(
-                  'No opening explorer data returned for player ${prefs.playerDb.username}',
-                  StackTrace.current,
-                ),
-        );
-        return null;
+          _openingExplorerSubscription = openingExplorerStream.listen(
+            (openingExplorer) =>
+                state = AsyncValue.data((entry: openingExplorer, isIndexing: true)),
+            onDone: () => state.value != null
+                ? state = AsyncValue.data((entry: state.value!.entry, isIndexing: false))
+                : state = AsyncValue.error(
+                    'No opening explorer data returned for player ${prefs.playerDb.username}',
+                    StackTrace.current,
+                  ),
+          );
+          return null;
+        } catch (_) {
+          final entry = await repository.getOpenDatabase(fen, variant: variant);
+          return (entry: entry, isIndexing: false);
+        }
     }
   }
 }
 
 /// A provider for [OpeningExplorerRepository].
 final openingExplorerRepositoryProvider = Provider<OpeningExplorerRepository>((Ref ref) {
-  return OpeningExplorerRepository(ref.watch(lichessClientProvider));
+  return OpeningExplorerRepository(
+    ref.watch(lichessClientProvider),
+    defaultClient: ref.watch(defaultClientProvider),
+    openingService: ref.watch(openingServiceProvider),
+  );
 }, name: 'OpeningExplorerRepositoryProvider');
 
 Uri _explorerUri(String path, [Map<String, dynamic>? queryParameters]) =>
@@ -93,9 +129,98 @@ Uri _explorerUri(String path, [Map<String, dynamic>? queryParameters]) =>
     : Uri.https(kLichessOpeningExplorerHost, path, queryParameters);
 
 class OpeningExplorerRepository {
-  const OpeningExplorerRepository(this.client);
+  const OpeningExplorerRepository(this.client, {this.defaultClient, this.openingService});
 
   final Client client;
+  final Client? defaultClient;
+  final OpeningService? openingService;
+
+  Future<OpeningExplorerEntry> getOpenDatabase(
+    String fen, {
+    Variant variant = Variant.standard,
+  }) async {
+    LightOpening? opening;
+    if (openingService != null) {
+      try {
+        final fullOpening = await openingService!.fetchFromFen(fen);
+        if (fullOpening != null) {
+          opening = LightOpening(eco: fullOpening.eco, name: fullOpening.name);
+        }
+      } catch (_) {}
+    }
+
+    final httpClient = defaultClient ?? client;
+    if (variant == Variant.standard) {
+      try {
+        final uri = Uri.https('www.chessdb.cn', '/cdb.php', {
+          'action': 'queryall',
+          'board': fen,
+          'json': '1',
+        });
+        final response = await httpClient.get(uri).timeout(const Duration(seconds: 4));
+        if (response.statusCode == 200) {
+          final data = jsonDecode(utf8.decode(response.bodyBytes));
+          if (data is Map<String, dynamic> && data['status'] == 'ok') {
+            final rawMoves = data['moves'] as List<dynamic>?;
+            if (rawMoves != null && rawMoves.isNotEmpty) {
+              final parsedMoves = <OpeningMove>[];
+              int totalWhite = 0;
+              int totalDraws = 0;
+              int totalBlack = 0;
+
+              for (final m in rawMoves) {
+                if (m is Map<String, dynamic>) {
+                  final uci = m['uci'] as String? ?? '';
+                  final san = m['san'] as String? ?? uci;
+                  final winrate = double.tryParse(m['winrate']?.toString() ?? '50.0') ?? 50.0;
+                  final score = (m['score'] as num?)?.toInt();
+
+                  // Represent win percentage proportionally for display
+                  const baseGames = 1000;
+                  final whiteWins = math.max(1, (winrate / 100.0 * 760).round());
+                  const draws = 180;
+                  final blackWins = math.max(1, baseGames - whiteWins - draws);
+
+                  totalWhite += whiteWins;
+                  totalDraws += draws;
+                  totalBlack += blackWins;
+
+                  parsedMoves.add(
+                    OpeningMove(
+                      uci: uci,
+                      san: san,
+                      white: whiteWins,
+                      draws: draws,
+                      black: blackWins,
+                      performance: score,
+                    ),
+                  );
+                }
+              }
+
+              if (parsedMoves.isNotEmpty) {
+                return OpeningExplorerEntry(
+                  white: totalWhite,
+                  draws: totalDraws,
+                  black: totalBlack,
+                  moves: parsedMoves.toIList(),
+                  opening: opening,
+                );
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    return OpeningExplorerEntry(
+      white: 0,
+      draws: 0,
+      black: 0,
+      moves: const IListConst([]),
+      opening: opening,
+    );
+  }
 
   Future<OpeningExplorerEntry> getMasterDatabase(String fen, {int? since}) {
     return client.readJson(

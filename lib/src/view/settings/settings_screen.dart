@@ -9,7 +9,6 @@ import 'package:chess_srs/src/network/connectivity.dart';
 import 'package:chess_srs/src/styles/styles.dart';
 import 'package:chess_srs/src/utils/l10n.dart';
 import 'package:chess_srs/src/utils/l10n_context.dart';
-import 'package:chess_srs/src/utils/navigation.dart';
 import 'package:chess_srs/src/view/settings/account_preferences_screen.dart';
 import 'package:chess_srs/src/view/settings/app_log_settings_screen.dart';
 import 'package:chess_srs/src/view/settings/board_settings_screen.dart';
@@ -36,7 +35,7 @@ class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   static Route<dynamic> buildRoute() {
-    return buildScreenRoute(screen: const SettingsScreen());
+    return SrsSettingsScreen.buildRoute();
   }
 
   @override

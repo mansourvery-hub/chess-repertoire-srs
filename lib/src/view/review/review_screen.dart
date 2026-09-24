@@ -613,6 +613,7 @@ class _ActiveReviewViewState extends ConsumerState<_ActiveReviewView> {
     final showComments = ref.watch(studyPreferencesProvider.select((p) => p.showPgnComments));
     final showAnnotations = ref.watch(studyPreferencesProvider.select((p) => p.showAnnotations));
     final showDiagnostics = ref.watch(studyPreferencesProvider.select((p) => p.srsDiagnostics));
+    final showMoveHistory = ref.watch(studyPreferencesProvider.select((p) => p.showMoveHistory));
 
     final isLapse = state.feedback == ReviewFeedback.incorrect;
     final isAnswerRevealed = isLapse || state.revealedComment != null || state.isAwaitingAdvance;
@@ -709,13 +710,15 @@ class _ActiveReviewViewState extends ConsumerState<_ActiveReviewView> {
               orientation: state.boardOrientation,
               wide: wide,
             ),
-            line: SrsNotationLine(
-              moves: prompt.moveHistory,
-              answerSan: isAnswerRevealed ? prompt.expectedMoves.firstOrNull?.san : null,
-              showBlank: !isAnswerRevealed,
-              wide: wide,
-              wideWidth: appWidth,
-            ),
+            line: showMoveHistory
+                ? SrsNotationLine(
+                    moves: prompt.moveHistory,
+                    answerSan: isAnswerRevealed ? prompt.expectedMoves.firstOrNull?.san : null,
+                    showBlank: !isAnswerRevealed,
+                    wide: wide,
+                    wideWidth: appWidth,
+                  )
+                : null,
             slot: _buildSlotContent(
               context,
               wide: wide,

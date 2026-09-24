@@ -6,8 +6,6 @@ import 'dart:math' as math;
 import 'package:chess_srs/src/design/design.dart';
 import 'package:chess_srs/src/model/analysis/analysis_controller.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
-import 'package:chess_srs/src/model/study/study_preferences.dart';
-import 'package:chess_srs/src/review/review_controller.dart';
 import 'package:chess_srs/src/view/analysis/analysis_screen.dart';
 import 'package:chess_srs/src/view/board_editor/board_editor_screen.dart';
 import 'package:chess_srs/src/view/review/repertoire_import_dialog.dart';
@@ -26,12 +24,26 @@ class SrsLibrarySheet extends ConsumerWidget {
   /// Displays the Library sheet.
   static Future<void> show(BuildContext context) {
     final c = context.srs;
-    return showModalBottomSheet<void>(
+    return showGeneralDialog<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
       barrierColor: c.scrim,
-      builder: (context) => const SrsLibrarySheet(),
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        return const SrsLibrarySheet();
+      },
+      transitionBuilder: (dialogContext, animation, secondaryAnimation, child) {
+        final isWide = MediaQuery.of(dialogContext).size.width >= 768;
+        if (isWide) {
+          return FadeTransition(opacity: animation, child: child);
+        }
+        final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        return SlideTransition(
+          position: Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero).animate(curved),
+          child: FadeTransition(opacity: animation, child: child),
+        );
+      },
     );
   }
 
@@ -94,20 +106,28 @@ class SrsLibrarySheet extends ConsumerWidget {
             ),
           );
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).pop(),
-      child: content,
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(context).pop(),
+          ),
+        ),
+        GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onVerticalDragEnd: (details) {
+            if ((details.primaryVelocity ?? 0) > 150) {
+              Navigator.of(context).pop();
+            }
+          },
+          child: content,
+        ),
+      ],
     );
   }
 
   Widget _buildContent(BuildContext context, WidgetRef ref, SrsColors c, bool isWide) {
-    final reviewState = ref.watch(reviewControllerProvider).asData?.value;
-    final isPractice = reviewState?.isPracticeMode ?? false;
-    final studyPrefs = ref.watch(studyPreferencesProvider);
-    final areAnnotationsActive = studyPrefs.showAnnotations || studyPrefs.showPgnComments;
-    final isDiagnosticsActive = studyPrefs.srsDiagnostics;
-
     return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -179,76 +199,14 @@ class SrsLibrarySheet extends ConsumerWidget {
               );
             },
           ),
-          _buildRow(
-            c: c,
-            title: isPractice ? 'Exit Practice Mode' : 'Free Practice Mode',
-            subtitle: 'Drill lines without altering SRS schedule',
-            onTap: () {
-              Navigator.pop(context);
-              if (isPractice) {
-                ref.read(reviewControllerProvider.notifier).exitPracticeMode();
-              } else {
-                ref.read(reviewControllerProvider.notifier).startPracticeMode();
-              }
-            },
-          ),
-
           _buildDivider(c),
 
-          // Group 3: Preferences & ChessSRS Settings
+          // Group 3: Preferences & Settings
           _buildGroupHeader('Preferences', c),
           _buildRow(
             c: c,
-            title: areAnnotationsActive ? 'Hide annotations' : 'Show annotations',
-            subtitle: 'Board shapes and PGN commentary',
-            trailing: Switch.adaptive(
-              value: areAnnotationsActive,
-              activeTrackColor: c.accent,
-              onChanged: (_) async {
-                Navigator.pop(context);
-                final notifier = ref.read(studyPreferencesProvider.notifier);
-                if (areAnnotationsActive) {
-                  if (studyPrefs.showAnnotations) await notifier.toggleAnnotations();
-                  if (studyPrefs.showPgnComments) await notifier.togglePgnComments();
-                } else {
-                  if (!studyPrefs.showAnnotations) await notifier.toggleAnnotations();
-                  if (!studyPrefs.showPgnComments) await notifier.togglePgnComments();
-                }
-              },
-            ),
-            onTap: () async {
-              Navigator.pop(context);
-              final notifier = ref.read(studyPreferencesProvider.notifier);
-              if (areAnnotationsActive) {
-                if (studyPrefs.showAnnotations) await notifier.toggleAnnotations();
-                if (studyPrefs.showPgnComments) await notifier.togglePgnComments();
-              } else {
-                if (!studyPrefs.showAnnotations) await notifier.toggleAnnotations();
-                if (!studyPrefs.showPgnComments) await notifier.togglePgnComments();
-              }
-            },
-          ),
-          _buildRow(
-            c: c,
-            title: 'Review Diagnostics HUD',
-            subtitle: 'Show real-time FSRS metrics & stability',
-            trailing: Switch.adaptive(
-              value: isDiagnosticsActive,
-              activeTrackColor: c.accent,
-              onChanged: (_) {
-                Navigator.pop(context);
-                ref.read(studyPreferencesProvider.notifier).toggleSrsDiagnostics();
-              },
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              ref.read(studyPreferencesProvider.notifier).toggleSrsDiagnostics();
-            },
-          ),
-          _buildRow(
-            c: c,
-            title: 'SRS Settings',
-            subtitle: 'Retention goals, intervals, and scheduling',
+            title: 'Settings',
+            subtitle: 'Review, board, engine, and sound',
             onTap: () {
               Navigator.pop(context);
               Navigator.push(
@@ -262,7 +220,7 @@ class SrsLibrarySheet extends ConsumerWidget {
             title: 'About and licences',
             onTap: () {
               Navigator.pop(context);
-              showLicensePage(context: context, applicationName: 'ChessSRS');
+              showLicensePage(context: context, applicationName: 'Chess Repertoire SRS');
             },
           ),
           const SizedBox(height: 8),

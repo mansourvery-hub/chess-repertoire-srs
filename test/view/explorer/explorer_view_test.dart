@@ -249,7 +249,7 @@ void main() {
       expect(find.text('Kh4'), findsOneWidget);
     });
 
-    testWidgets('shows login prompt when signed out for initial position', (
+    testWidgets('works out of the box when signed out for initial position', (
       WidgetTester tester,
     ) async {
       const position = Chess.initial;
@@ -271,14 +271,13 @@ void main() {
         },
       );
       await tester.pumpWidget(app);
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
 
       expect(find.byType(OpeningExplorerView), findsOneWidget);
       expect(
         find.text('A free Lichess account is required to query the online opening database.'),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(find.widgetWithText(FilledButton, 'Sign in'), findsOneWidget);
     });
 
     testWidgets('shows tablebase for endgame position even when signed out', (
