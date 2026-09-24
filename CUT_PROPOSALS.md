@@ -57,8 +57,9 @@ These are the authoritative decisions from the owner. Do not override them.
 
 **C8 Social note**: Friends list, inbox, player search, and relations navigation
 entries were removed from the More tab and Account menu; the Home screen friends
-carousel was removed; and the background message service was silenced. Base user/account
-models remain for C3 (auth).
+carousel was removed; the background message service was silenced; and the relation
+repository, following_user model, and follow/block actions were pruned in Step 15.
+Base user/account models remain for C3 (auth).
 
 ---
 
@@ -83,6 +84,9 @@ Step 9  [x]  C8  — Social navigation & Home carousel & Message poller DONE
 Step 10 [K]  C17 — WebSocket (KEPT by owner decision for study sync / cloud eval)
 Step 11 [K]  C18 — HTTP network & core repositories (KEPT for auth / study / explorer)
 Step 12 [x]  Tab reduction: clean 2-tab shell (Review + More) — Home tab removed DONE
+Step 13 [x]  C8  — Dead social views & message models (b8664182d)      DONE
+Step 14 [x]  User— Dead leaderboard & online bot screens/providers (b0ad26284) DONE
+Step 15 [x]  C8  — Dead relation repository, following_user & follow/block actions DONE
 ```
 
 Steps beyond 12 (C12 offline computer, C13 engine) are blocked on owner
@@ -304,4 +308,5 @@ or HTTP consumers outside auth and study-import paths.
 | 9 / C8 | Social navigation entries from More tab | `790bb99c2` | 2026-09-15 | 1182 passing, analyze 0, linux build ok |
 | 12 / Home | Home tab + home widgets/prefs (clean 2-tab shell: Review + More) | `29c3db19e` | 2026-09-16 | 1188 → 1158 passing, analyze 0, linux build ok |
 | 13 / C8-Views | Dead social views & models (messages, conversations, friend/player screens) | `b8664182d` | 2026-09-18 | 1267 → 1252 passing, analyze 0, linux build ok |
-| 14 / User-Views | Dead leaderboard & online bot screens, models, and providers | _(this commit)_ | 2026-09-18 | 1252 → 1248 passing, analyze 0, linux build ok |
+| 14 / User-Views | Dead leaderboard & online bot screens, models, and providers | `b0ad26284` | 2026-09-18 | 1252 → 1248 passing, analyze 0, linux build ok |
+| 15 / C8-Relation | Dead relation repository, following_user model, and follow/block actions | _(this commit)_ | 2026-09-24 | 1248 → 1246 passing, analyze 0, linux build ok |

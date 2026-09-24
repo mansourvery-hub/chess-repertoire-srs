@@ -1,7 +1,6 @@
 import 'package:chess_srs/src/model/auth/auth_controller.dart';
 import 'package:chess_srs/src/model/common/id.dart';
 import 'package:chess_srs/src/model/game/game_filter.dart';
-import 'package:chess_srs/src/model/relation/relation_repository.dart';
 import 'package:chess_srs/src/model/user/user.dart';
 import 'package:chess_srs/src/model/user/user_repository.dart';
 import 'package:chess_srs/src/network/connectivity.dart';
@@ -32,7 +31,7 @@ final _userScreenDataProvider = FutureProvider.autoDispose.family<UserScreenData
   name: 'UserScreenDataProvider',
 );
 
-class UserScreen extends ConsumerStatefulWidget {
+class UserScreen extends ConsumerWidget {
   const UserScreen({required this.user, super.key});
 
   final LightUser user;
@@ -42,23 +41,8 @@ class UserScreen extends ConsumerStatefulWidget {
   }
 
   @override
-  ConsumerState<UserScreen> createState() => _UserScreenState();
-}
-
-class _UserScreenState extends ConsumerState<UserScreen> {
-  bool isLoading = false;
-
-  void setIsLoading(bool value) {
-    if (mounted) {
-      setState(() {
-        isLoading = value;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final userScreenData = ref.watch(_userScreenDataProvider(widget.user.id));
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userScreenData = ref.watch(_userScreenDataProvider(user.id));
     final updatedLightUser = userScreenData.maybeWhen(
       data: (data) => data.user.lightUser.copyWith(isOnline: data.isOnline),
       orElse: () => null,
@@ -68,26 +52,23 @@ class _UserScreenState extends ConsumerState<UserScreen> {
       appBar: PlatformAppBar(
         titleSpacing: 0,
         title: UserAppBarTitleWidget(
-          user: updatedLightUser ?? widget.user,
+          user: updatedLightUser ?? user,
           isOnline: updatedLightUser?.isOnline == true,
           seenAt: seenAt,
         ),
         actions: [
-          if (isLoading) const PlatformAppBarLoadingIndicator(),
           SemanticIconButton(
             icon: const PlatformShareIcon(),
             semanticsLabel: 'Share profile',
             onPressed: () =>
-                launchShareDialog(context, ShareParams(uri: lichessUri('/@/${widget.user.name}'))),
+                launchShareDialog(context, ShareParams(uri: lichessUri('/@/${user.name}'))),
           ),
         ],
       ),
       body: userScreenData.when(
         data: (data) => _UserProfileListView(
           data,
-          isLoading,
-          setIsLoading,
-          onRefresh: () => ref.refresh(_userScreenDataProvider(widget.user.id).future),
+          onRefresh: () => ref.refresh(_userScreenDataProvider(user.id).future),
         ),
         loading: () => const Center(child: CircularProgressIndicator.adaptive()),
         error: (error, _) {
@@ -95,13 +76,13 @@ class _UserScreenState extends ConsumerState<UserScreen> {
             return Center(
               child: Text(
                 textAlign: TextAlign.center,
-                context.l10n.usernameNotFound(widget.user.name),
+                context.l10n.usernameNotFound(user.name),
                 style: Styles.bold,
               ),
             );
           }
           return FullScreenRetryRequest(
-            onRetry: () => ref.invalidate(_userScreenDataProvider(widget.user.id)),
+            onRetry: () => ref.invalidate(_userScreenDataProvider(user.id)),
           );
         },
       ),
@@ -110,16 +91,9 @@ class _UserScreenState extends ConsumerState<UserScreen> {
 }
 
 class _UserProfileListView extends ConsumerWidget {
-  const _UserProfileListView(
-    this.data,
-    this.isLoading,
-    this.setIsLoading, {
-    required this.onRefresh,
-  });
+  const _UserProfileListView(this.data, {required this.onRefresh});
 
   final UserScreenData data;
-  final bool isLoading;
-  final void Function(bool value) setIsLoading;
   final RefreshCallback onRefresh;
 
   String _scoreDisplay(double score) {
@@ -141,15 +115,6 @@ class _UserProfileListView extends ConsumerWidget {
 
     if (user.disabled == true) {
       return Center(child: Text(context.l10n.settingsThisAccountIsClosed, style: Styles.bold));
-    }
-
-    Future<void> userAction(Future<void> Function() action) async {
-      setIsLoading(true);
-      try {
-        await action.call().then((_) => ref.invalidate(_userScreenDataProvider(user.id)));
-      } finally {
-        setIsLoading(false);
-      }
     }
 
     return HapticRefreshIndicator(
@@ -190,45 +155,6 @@ class _UserProfileListView extends ConsumerWidget {
                 }(),
               ],
               if (authUser != null) ...[
-                if (user.followable == true && user.following != true)
-                  ListTile(
-                    leading: const Icon(Icons.person_add_outlined),
-                    title: Text(context.l10n.follow),
-                    onTap: isLoading
-                        ? null
-                        : () => userAction(
-                            () => ref.read(relationRepositoryProvider).follow(user.id),
-                          ),
-                  )
-                else if (user.following == true)
-                  ListTile(
-                    leading: const Icon(Icons.person_remove_outlined),
-                    title: Text(context.l10n.unfollow),
-                    onTap: isLoading
-                        ? null
-                        : () => userAction(
-                            () => ref.read(relationRepositoryProvider).unfollow(user.id),
-                          ),
-                  ),
-                if (user.following != true && user.blocking != true)
-                  ListTile(
-                    leading: const Icon(Icons.block_outlined),
-                    title: Text(context.l10n.block),
-                    onTap: isLoading
-                        ? null
-                        : () =>
-                              userAction(() => ref.read(relationRepositoryProvider).block(user.id)),
-                  )
-                else if (user.blocking == true)
-                  ListTile(
-                    leading: const Icon(Icons.block_outlined),
-                    title: Text(context.l10n.unblock),
-                    onTap: isLoading
-                        ? null
-                        : () => userAction(
-                            () => ref.read(relationRepositoryProvider).unblock(user.id),
-                          ),
-                  ),
                 ListTile(
                   leading: const Icon(Icons.report_problem_outlined),
                   title: Text(context.l10n.reportXToModerators(user.username)),
