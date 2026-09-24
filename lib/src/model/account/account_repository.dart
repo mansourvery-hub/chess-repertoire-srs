@@ -35,7 +35,7 @@ class AccountRepository {
 
   Future<User> getProfile() {
     return aggregator.readJson(
-      Uri(path: '/api/account', queryParameters: {'playban': '1'}),
+      Uri(path: '/api/account'),
       atomicMapper: User.fromServerJson,
       aggregatedMapper: (json) => User.fromServerJson(json as Map<String, dynamic>),
     );

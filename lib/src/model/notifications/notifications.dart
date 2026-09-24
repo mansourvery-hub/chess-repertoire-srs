@@ -1,11 +1,8 @@
 import 'package:chess_srs/l10n/l10n.dart';
 import 'package:chess_srs/src/model/common/id.dart';
-import 'package:chess_srs/src/model/user/user.dart' show TemporaryBan;
-import 'package:chess_srs/src/utils/json.dart';
 import 'package:chess_srs/src/utils/l10n.dart' show relativeDate;
 import 'package:collection/collection.dart';
 import 'package:dartchess/dartchess.dart';
-import 'package:deep_pick/deep_pick.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:meta/meta.dart';
@@ -292,8 +289,6 @@ sealed class LocalNotification {
     switch (type) {
       case 'corresGameUpdate':
         return CorresGameUpdateNotification.fromJson(json);
-      case 'playban':
-        return PlaybanNotification.fromJson(json);
       case 'newMessage':
         return NewMessageNotification.fromJson(json);
       case 'challengeAccept':
@@ -312,52 +307,6 @@ sealed class LocalNotification {
         throw ArgumentError('Unknown notification payload type: $type');
     }
   }
-}
-
-/// A notification show to the user when they are banned temporarily from playing.
-class PlaybanNotification extends LocalNotification {
-  const PlaybanNotification(this.playban);
-
-  final TemporaryBan playban;
-
-  factory PlaybanNotification.fromJson(Map<String, dynamic> json) {
-    final p = pick(json).required();
-    final playban = TemporaryBan(
-      date: p('date').asDateTimeFromMillisecondsOrThrow(),
-      duration: p('minutes').asDurationFromMinutesOrThrow(),
-    );
-    return PlaybanNotification(playban);
-  }
-
-  @override
-  String get channelId => 'playban';
-
-  @override
-  int get id => playban.date.toIso8601String().hashCode;
-
-  @override
-  Map<String, dynamic> get _concretePayload => {
-    'minutes': playban.duration.inMinutes,
-    'date': playban.date.millisecondsSinceEpoch,
-  };
-
-  @override
-  String title(AppLocalizations l10n) => l10n.sorry;
-
-  @override
-  String body(AppLocalizations l10n) => l10n.weHadToTimeYouOutForAWhile;
-
-  @override
-  NotificationDetails details(AppLocalizations l10n) => NotificationDetails(
-    android: AndroidNotificationDetails(
-      channelId,
-      'Playban',
-      importance: Importance.max,
-      priority: Priority.max,
-      autoCancel: false,
-    ),
-    iOS: DarwinNotificationDetails(threadIdentifier: channelId),
-  );
 }
 
 /// A notification for a new message in a private conversation.

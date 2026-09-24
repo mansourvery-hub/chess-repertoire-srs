@@ -90,7 +90,7 @@ void main() {
 
       final aggregator = await mockClientAggregator(mockClient);
 
-      final accountUri = Uri(path: '/api/account', queryParameters: {'playban': '1'});
+      final accountUri = Uri(path: '/api/account');
       final inboxUri = Uri(path: '/inbox/unread-count');
 
       final [account, inbox] = await Future.wait([
@@ -125,7 +125,7 @@ void main() {
 
       final aggregator = await mockClientAggregator(mockClient);
 
-      final accountUri = Uri(path: '/api/account', queryParameters: {'playban': '1'});
+      final accountUri = Uri(path: '/api/account');
       final recentGamesUri = Uri(path: '/api/games/user/testuser');
       final inboxUri = Uri(path: '/inbox/unread-count');
 
