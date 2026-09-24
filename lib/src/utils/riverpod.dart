@@ -12,7 +12,7 @@ import 'package:flutter_riverpod/misc.dart';
 /// for the whole back-off.
 ///
 /// That includes the 503 of a planned maintenance and the 502 of an outage: both are surfaced by
-/// [ServerStatusNotifier] and shown as a [ServerOutageDisplay], and recovery is driven by
+/// [ServerStatusNotifier], and recovery is driven by
 /// pull-to-refresh and by coming back to the app, not by retrying in the background.
 Duration? lichessProviderRetry(int retryCount, Object error) {
   if (error is ServerException) return null;

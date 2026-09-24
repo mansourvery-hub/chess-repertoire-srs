@@ -65,12 +65,7 @@ enum LichessConnectionStatus {
 
 /// A provider that exposes the current [LichessConnectionStatus].
 ///
-/// Reserve this for the tabs that show a [ServerOutageDisplay]: it is the only place where a
-/// lichess outage should change the UI. Elsewhere, gate on [isDeviceOnlineProvider] instead — a
-/// disabled link does not explain itself, so it is better to let the user follow it and see the
-/// error than to grey it out because the server happens to be down.
-///
-/// Beware too that other lichess services, such as the opening explorer or the tablebase, run on
+/// Beware that other lichess services, such as the opening explorer or the tablebase, run on
 /// their own servers and may well be reachable while the main server is down.
 final lichessConnectionStatusProvider = Provider.autoDispose<LichessConnectionStatus>((ref) {
   if (!ref.watch(isDeviceOnlineProvider)) return LichessConnectionStatus.networkDown;
