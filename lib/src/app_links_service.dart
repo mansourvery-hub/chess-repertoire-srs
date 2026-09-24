@@ -161,7 +161,7 @@ class AppLinksService {
     return null;
   }
 
-  /// Handles an `org.lichess.mobile://open-web?url=...` link (e.g. from the platform widget)
+  /// Handles an `org.chesssrs.app://open-web?url=...` link (e.g. from the platform widget)
   /// by opening the encoded URL in the platform in-app browser.
   void _handleOpenWebLink(Uri uri) {
     final target = uri.queryParameters['url'];

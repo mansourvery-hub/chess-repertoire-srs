@@ -432,8 +432,9 @@ class LichessClient implements Client {
   @override
   Future<StreamedResponse> send(BaseRequest request) async {
     final authUser = _ref.read(authControllerProvider);
+    final isMainHost = request.url.host.isEmpty || request.url.host == _lichessMainHost;
 
-    if (authUser != null && !request.headers.containsKey('Authorization')) {
+    if (isMainHost && authUser != null && !request.headers.containsKey('Authorization')) {
       final bearer = signBearerToken(authUser.token);
       request.headers['Authorization'] = 'Bearer $bearer';
     }
@@ -441,7 +442,7 @@ class LichessClient implements Client {
       _cachedPackageInfo,
       _cachedDeviceInfo,
       _cachedSri,
-      authUser?.user,
+      isMainHost ? authUser?.user : null,
     );
 
     final quiet = request.headers.remove(kQuietRequestHeader) != null;
@@ -459,12 +460,12 @@ class LichessClient implements Client {
       // Only the main server can tell us whether lichess is up: the opening
       // explorer and the tablebase run on their own servers and may well be
       // available while lichess itself is down (and vice versa).
-      if (_ref.mounted && request.url.host == _lichessMainHost) {
+      if (_ref.mounted && isMainHost) {
         _ref.read(serverStatusProvider.notifier).handleHttpResponse(response.statusCode);
       }
 
-      if (response.statusCode == 401 && authUser != null) {
-        _ref.read(authControllerProvider.notifier).checkToken();
+      if (response.statusCode == 401 && authUser != null && isMainHost) {
+        _ref.read(authControllerProvider.notifier).checkToken(authUser);
       }
 
       return response;

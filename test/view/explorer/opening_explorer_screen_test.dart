@@ -39,6 +39,17 @@ void main() {
         return mockResponse(playerOpeningExplorerResponse, 200);
       }
     }
+    if (request.url.host == 'www.chessdb.cn') {
+      return mockResponse(
+        jsonEncode({
+          'status': 'ok',
+          'moves': [
+            {'uci': 'e2e4', 'san': 'e4', 'winrate': 53.2, 'score': 12},
+          ],
+        }),
+        200,
+      );
+    }
     return mockResponse('', 404);
   });
 
@@ -185,6 +196,39 @@ void main() {
       //   find.byType(OpeningExplorerGameTile),
       //   findsOneWidget,
       // );
+    }, variant: kPlatformVariant);
+
+    testWidgets('chessdb opening explorer loads', (WidgetTester tester) async {
+      final app = await makeTestProviderScopeApp(
+        tester,
+        home: const OpeningExplorerScreen(options: options),
+        overrides: {
+          httpClientFactoryProvider: httpClientFactoryProvider.overrideWith((ref) {
+            return FakeHttpClientFactory(() => mockClient);
+          }),
+        },
+        authUser: authUser,
+        defaultPreferences: {
+          SessionPreferencesStorage.key(
+            PrefCategory.openingExplorer.storageKey,
+            authUser,
+          ): jsonEncode(
+            OpeningExplorerPrefs.defaults(
+              user: user,
+            ).copyWith(db: OpeningDatabase.chessdb).toJson(),
+          ),
+        },
+      );
+      await tester.pumpWidget(app);
+
+      // wait for opening explorer data to load (taking debounce delay into account)
+      await tester.pump(const Duration(milliseconds: 350));
+
+      final moves = ['e4'];
+      expect(find.byType(Table), findsOneWidget);
+      for (final move in moves) {
+        expect(find.widgetWithText(TableRowInkWell, move), findsOneWidget);
+      }
     }, variant: kPlatformVariant);
 
     // regression test for #2726

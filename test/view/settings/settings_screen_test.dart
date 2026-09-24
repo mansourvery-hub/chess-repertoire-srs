@@ -37,12 +37,7 @@ void main() {
       expect(find.text('Daily limit'), findsOneWidget);
       expect(find.text('Target retention'), findsOneWidget);
 
-      // Expand Advanced section
-      await tester.ensureVisible(find.text('Advanced'));
-      await tester.tap(find.text('Advanced'));
-      await tester.pumpAndSettle();
-
-      // Verify advanced controls are visible
+      // Verify algorithm controls are visible
       expect(find.text('Scheduling algorithm'), findsOneWidget);
       expect(find.text('FSRS'), findsOneWidget);
       expect(find.text('Simple'), findsOneWidget);

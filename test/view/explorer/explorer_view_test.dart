@@ -272,8 +272,10 @@ void main() {
       );
       await tester.pumpWidget(app);
       await tester.pump(const Duration(milliseconds: 350));
+      await tester.pump();
 
       expect(find.byType(OpeningExplorerView), findsOneWidget);
+      expect(find.widgetWithText(TableRowInkWell, 'e4'), findsOneWidget);
       expect(
         find.text('A free Lichess account is required to query the online opening database.'),
         findsNothing,

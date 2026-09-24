@@ -20,7 +20,7 @@ final tablebaseProvider = FutureProvider.autoDispose
     }, name: 'TablebaseProvider');
 
 final tablebaseRepositoryProvider = Provider<TablebaseRepository>((ref) {
-  final client = ref.watch(lichessClientProvider);
+  final client = ref.watch(defaultClientProvider);
   return TablebaseRepository(client);
 }, name: 'TablebaseRepositoryProvider');
 

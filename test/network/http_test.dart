@@ -309,6 +309,28 @@ void main() {
       );
     });
 
+    test('LichessClient does not attach Authorization to non-main-host requests', () async {
+      final container = await makeContainer(
+        overrides: {
+          httpClientFactoryProvider: httpClientFactoryProvider.overrideWith((ref) {
+            return FakeHttpClientFactory(() => FakeClient());
+          }),
+        },
+        authUser: const AuthUser(
+          token: 'test-token',
+          user: LightUser(id: UserId('test-user-id'), name: 'test-username'),
+        ),
+      );
+
+      final client = container.read(lichessClientProvider);
+      await client.get(Uri.parse('https://explorer.lichess.org/masters'));
+
+      final requests = FakeClient.verifyRequests();
+      expect(requests.length, 1);
+      expect(requests.first.headers.containsKey('Authorization'), isFalse);
+      expect(requests.first.headers['User-Agent'], isNot(contains('as:test-user-id')));
+    });
+
     test(
       'when receiving a 401, will test authUser token and delete authUser if not valid anymore',
       () async {

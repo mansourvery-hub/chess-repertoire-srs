@@ -236,6 +236,13 @@ class OpeningExplorerSettings extends ConsumerWidget {
                     .read(openingExplorerPreferencesProvider.notifier)
                     .setDatabase(OpeningDatabase.player),
               ),
+              ChoiceChip(
+                label: const Text('ChessDB'),
+                selected: prefs.db == OpeningDatabase.chessdb,
+                onSelected: (_) => ref
+                    .read(openingExplorerPreferencesProvider.notifier)
+                    .setDatabase(OpeningDatabase.chessdb),
+              ),
             ],
           ),
         ),
@@ -243,6 +250,14 @@ class OpeningExplorerSettings extends ConsumerWidget {
           OpeningDatabase.master => masterDbSettings,
           OpeningDatabase.lichess => lichessDbSettings,
           OpeningDatabase.player => playerDbSettings,
+          OpeningDatabase.chessdb => [
+            const ListTile(
+              title: Text('ChessDB Cloud Book'),
+              subtitle: Text(
+                'Open cloud database queries with move evaluation scores, win rates, and candidate lines.',
+              ),
+            ),
+          ],
         },
       ],
     );

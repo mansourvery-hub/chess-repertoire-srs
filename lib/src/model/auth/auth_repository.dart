@@ -174,9 +174,12 @@ class AuthRepository {
     return AuthUser(token: token, user: user.lightUser);
   }
 
-  /// Sign out the current user by revoking the auth token.
-  Future<void> signOut() async {
-    await _client.deleteRead(Uri(path: '/api/token'));
+  /// Sign out the given or current user by revoking the auth token.
+  Future<void> signOut([AuthUser? authUser]) async {
+    final headers = authUser != null
+        ? {'Authorization': 'Bearer ${signBearerToken(authUser.token)}'}
+        : null;
+    await _client.deleteRead(Uri(path: '/api/token'), headers: headers);
   }
 
   /// Check if the given authUser token is valid.

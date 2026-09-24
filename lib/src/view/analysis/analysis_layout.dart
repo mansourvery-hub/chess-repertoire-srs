@@ -521,22 +521,25 @@ class _AnalysisTabView extends StatelessWidget {
                   .map(
                     (tab) => Tooltip(
                       message: tab.l10n(context.l10n),
-                      child: Tab(
-                        height: 32,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(tab.icon, size: 14),
-                            const SizedBox(width: 5),
-                            Flexible(
-                              child: Text(
-                                tab.shortLabel(context.l10n),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                      child: Semantics(
+                        label: tab.l10n(context.l10n),
+                        child: Tab(
+                          height: 32,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(tab.icon, size: 14),
+                              const SizedBox(width: 5),
+                              Flexible(
+                                child: Text(
+                                  tab.shortLabel(context.l10n),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),

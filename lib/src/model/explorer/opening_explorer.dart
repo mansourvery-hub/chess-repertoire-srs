@@ -8,7 +8,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'opening_explorer.freezed.dart';
 part 'opening_explorer.g.dart';
 
-enum OpeningDatabase { master, lichess, player }
+enum OpeningDatabase { master, lichess, player, chessdb }
 
 @Freezed(fromJson: true)
 sealed class OpeningExplorerEntry with _$OpeningExplorerEntry {

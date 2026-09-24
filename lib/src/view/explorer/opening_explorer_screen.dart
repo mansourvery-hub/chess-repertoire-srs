@@ -262,6 +262,7 @@ class _BottomBar extends ConsumerWidget {
       OpeningDatabase.master => 'Masters',
       OpeningDatabase.lichess => 'Lichess',
       OpeningDatabase.player => context.l10n.player,
+      OpeningDatabase.chessdb => 'ChessDB',
     };
 
     return BottomBar(

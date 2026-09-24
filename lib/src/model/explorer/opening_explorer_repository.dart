@@ -4,7 +4,6 @@ import 'dart:math' as math;
 
 import 'package:chess_srs/src/constants.dart';
 import 'package:chess_srs/src/model/analysis/opening_service.dart';
-import 'package:chess_srs/src/model/auth/auth_controller.dart';
 import 'package:chess_srs/src/model/common/chess.dart' show LightOpening, Variant;
 import 'package:chess_srs/src/model/common/speed.dart';
 import 'package:chess_srs/src/model/explorer/opening_explorer.dart';
@@ -42,13 +41,6 @@ class OpeningExplorer extends AsyncNotifier<({OpeningExplorerEntry entry, bool i
     final prefs = ref.watch(openingExplorerPreferencesProvider);
     final db = _openingExplorerDatabaseFor(prefs.db, variant);
     final repository = ref.read(openingExplorerRepositoryProvider);
-    final isLoggedIn = ref.watch(isLoggedInProvider);
-
-    // If the user is unauthenticated, query the open database out-of-the-box.
-    if (!isLoggedIn && (db == OpeningDatabase.master || db == OpeningDatabase.lichess)) {
-      final entry = await repository.getOpenDatabase(fen, variant: variant);
-      return (entry: entry, isIndexing: false);
-    }
 
     switch (db) {
       case OpeningDatabase.master:
@@ -76,6 +68,9 @@ class OpeningExplorer extends AsyncNotifier<({OpeningExplorerEntry entry, bool i
           final entry = await repository.getOpenDatabase(fen, variant: variant);
           return (entry: entry, isIndexing: false);
         }
+      case OpeningDatabase.chessdb:
+        final entry = await repository.getOpenDatabase(fen, variant: variant);
+        return (entry: entry, isIndexing: false);
       case OpeningDatabase.player:
         if (prefs.playerDb.username == null) {
           final entry = await repository.getOpenDatabase(fen, variant: variant);
@@ -115,7 +110,7 @@ class OpeningExplorer extends AsyncNotifier<({OpeningExplorerEntry entry, bool i
 /// A provider for [OpeningExplorerRepository].
 final openingExplorerRepositoryProvider = Provider<OpeningExplorerRepository>((Ref ref) {
   return OpeningExplorerRepository(
-    ref.watch(lichessClientProvider),
+    ref.watch(defaultClientProvider),
     defaultClient: ref.watch(defaultClientProvider),
     openingService: ref.watch(openingServiceProvider),
   );

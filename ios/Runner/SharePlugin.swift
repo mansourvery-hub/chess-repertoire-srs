@@ -8,7 +8,7 @@ import UIKit
 ///  - A `.pgn` file opened from the Files app or another app arrives as a
 ///    security-scoped `file://` URL.
 ///  - The Share Extension writes the PGN into the shared App Group container and
-///    opens `org.lichess.mobile://shared-pgn`, which we read back from the
+///    opens `org.chesssrs.app://shared-pgn`, which we read back from the
 ///    container here.
 ///
 /// The app uses a scene-based lifecycle (`FlutterSceneDelegate`), so URL opens

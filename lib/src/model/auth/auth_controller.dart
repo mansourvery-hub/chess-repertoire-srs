@@ -36,6 +36,9 @@ final emailLoginCodeRequestMutation = Mutation<void>();
 final emailLoginCodeSignInMutation = Mutation<void>();
 
 class AuthController extends Notifier<AuthUser?> {
+  int _generation = 0;
+  final Map<String, Future<bool>> _inFlightTokenChecks = {};
+
   @override
   AuthUser? build() {
     return ref.read(preloadedDataProvider).requireValue.authUser;
@@ -43,8 +46,10 @@ class AuthController extends Notifier<AuthUser?> {
 
   /// Signs in the user with the OAuth browser flow.
   Future<void> signIn() async {
-    final authUser = await ref.read(authRepositoryProvider).signIn();
-    await _onSignedIn(authUser);
+    final generation = ++_generation;
+    final authRepo = ref.read(authRepositoryProvider);
+    final authUser = await authRepo.signIn();
+    await _onSignedIn(authUser, generation);
   }
 
   /// Asks lichess to email a login code for the [username] account to [email].
@@ -58,16 +63,22 @@ class AuthController extends Notifier<AuthUser?> {
     required String email,
     required String code,
   }) async {
-    final authUser = await ref
-        .read(authRepositoryProvider)
-        .signInWithEmailCode(username: username, email: email, code: code);
-    await _onSignedIn(authUser);
+    final generation = ++_generation;
+    final authRepo = ref.read(authRepositoryProvider);
+    final authUser = await authRepo.signInWithEmailCode(
+      username: username,
+      email: email,
+      code: code,
+    );
+    await _onSignedIn(authUser, generation);
   }
 
-  Future<void> _onSignedIn(AuthUser authUser) async {
-    await ref.read(authStorageProvider).write(authUser);
+  Future<void> _onSignedIn(AuthUser authUser, int generation) async {
+    if (generation != _generation) return;
+    final authStorage = ref.read(authStorageProvider);
+    await authStorage.write(authUser);
 
-    if (!ref.mounted) return;
+    if (!ref.mounted || generation != _generation) return;
     state = authUser;
 
     _authEventsController.add(AuthEvent.signIn);
@@ -75,27 +86,62 @@ class AuthController extends Notifier<AuthUser?> {
 
   /// Signs out the user.
   Future<void> signOut() async {
+    final userToSignOut = state;
+    if (userToSignOut == null) return;
+    final generation = ++_generation;
+    final authRepo = ref.read(authRepositoryProvider);
+    final authStorage = ref.read(authStorageProvider);
+
     await Future<void>.delayed(const Duration(milliseconds: 500));
+    if (generation != _generation) return;
 
     _authEventsController.add(AuthEvent.signOut);
-    await ref.read(authRepositoryProvider).signOut();
-    await ref.read(authStorageProvider).delete();
-    if (!ref.mounted) return;
+    try {
+      await authRepo.signOut(userToSignOut);
+    } catch (_) {
+      // Best-effort remote revocation
+    }
+    if (generation != _generation) return;
+
+    await authStorage.delete();
+    if (!ref.mounted || generation != _generation) return;
     state = null;
   }
 
-  /// Checks if the current authUser token is still valid.
+  /// Checks if the given or current authUser token is still valid.
   ///
-  /// If the token is invalid, it deletes the authUser from storage.
-  Future<void> checkToken() async {
-    if (state == null) {
+  /// If the token is invalid, it deletes the authUser from storage if it is still active.
+  Future<void> checkToken([AuthUser? targetUser]) async {
+    final userToCheck = targetUser ?? state;
+    if (userToCheck == null) {
       return;
     }
 
-    final isValid = await ref.read(authRepositoryProvider).checkToken(state!);
+    final token = userToCheck.token;
+    final generation = _generation;
+    final authRepo = ref.read(authRepositoryProvider);
+    final authStorage = ref.read(authStorageProvider);
+
+    final checkFuture = _inFlightTokenChecks.putIfAbsent(
+      token,
+      () => authRepo.checkToken(userToCheck),
+    );
+
+    bool isValid;
+    try {
+      isValid = await checkFuture;
+    } finally {
+      _inFlightTokenChecks.remove(token);
+    }
+
     if (!isValid) {
-      await ref.read(authStorageProvider).delete();
-      if (!ref.mounted) return;
+      if (!ref.mounted || generation != _generation || state?.token != token) {
+        return;
+      }
+      await authStorage.delete();
+      if (!ref.mounted || generation != _generation || state?.token != token) {
+        return;
+      }
       state = null;
     }
   }

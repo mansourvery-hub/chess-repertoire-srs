@@ -30,11 +30,11 @@ void main() {
     expect(find.text('Daily limit'), findsOneWidget);
     expect(find.text('Target retention'), findsOneWidget);
     expect(find.text('Show notes after a move'), findsOneWidget);
-    expect(find.text('Show arrows and circles'), findsOneWidget);
+    expect(find.text('Show board annotations'), findsOneWidget);
     expect(find.text('Theme'), findsOneWidget);
     expect(find.text('Accent'), findsOneWidget);
     expect(find.text('Sound'), findsOneWidget);
-    expect(find.text('Advanced'), findsOneWidget);
+    expect(find.text('Scheduling algorithm'), findsOneWidget);
 
     // Segmented daily limits
     expect(find.text('25'), findsOneWidget);
@@ -52,11 +52,13 @@ void main() {
     await tester.pumpAndSettle();
 
     // Toggle notes
+    await tester.ensureVisible(find.text('Show notes after a move'));
     await tester.tap(find.text('Show notes after a move'));
     await tester.pumpAndSettle();
 
     // Toggle arrows
-    await tester.tap(find.text('Show arrows and circles'));
+    await tester.ensureVisible(find.text('Show board annotations'));
+    await tester.tap(find.text('Show board annotations'));
     await tester.pumpAndSettle();
 
     // Toggle theme to Dark
@@ -74,17 +76,12 @@ void main() {
     expect(find.text('Sound & audio details'), findsOneWidget);
     expect(find.text('Chess engine'), findsOneWidget);
 
-    // Expand Advanced section
-    await tester.ensureVisible(find.text('Advanced'));
-    await tester.tap(find.text('Advanced'));
-    await tester.pumpAndSettle();
-
-    // Verify advanced controls are now visible
+    // Verify algorithm controls are visible
     expect(find.text('Scheduling algorithm'), findsOneWidget);
     expect(find.text('FSRS'), findsOneWidget);
     expect(find.text('Simple'), findsOneWidget);
     expect(find.text('Ease'), findsOneWidget);
-    expect(find.text('Diagnostics'), findsOneWidget);
+    expect(find.text('Review Diagnostics HUD'), findsOneWidget);
     expect(find.text('Local database size'), findsOneWidget);
     expect(find.text('HTTP network logs'), findsOneWidget);
     expect(find.text('App diagnostics logs'), findsOneWidget);
@@ -95,8 +92,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // Toggle diagnostics
-    await tester.ensureVisible(find.text('Diagnostics'));
-    await tester.tap(find.text('Diagnostics'));
+    await tester.ensureVisible(find.text('Review Diagnostics HUD'));
+    await tester.tap(find.text('Review Diagnostics HUD'));
     await tester.pumpAndSettle();
   });
 }
