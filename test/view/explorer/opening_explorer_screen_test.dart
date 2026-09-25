@@ -12,7 +12,9 @@ import 'package:chess_srs/src/model/user/user.dart';
 import 'package:chess_srs/src/network/http.dart';
 import 'package:chess_srs/src/view/explorer/opening_explorer_screen.dart';
 import 'package:chess_srs/src/view/more/more_tab_screen.dart';
+import 'package:chess_srs/src/widgets/move_list.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:material_ui/material_ui.dart';
@@ -266,6 +268,70 @@ void main() {
       await playMove(tester, 'd2', 'd4');
       expect(boardHasPiece(tester, Square.d4, Piece.whitePawn), isTrue);
     });
+
+    // Reported as an off-by-one: the explorer decrements the move list's index before handing
+    // it to jumpToNthNodeOnMainline, and jumpToNthNodeOnMainline(0) looks like it should be the
+    // starting position. It is not. The loop that walks a mainline path down to its start stops
+    // as soon as the next step would be empty, so it lands on the *first move* — the parameter
+    // is 0-based from there, not from the root. The move list hands over a 1-based move number,
+    // so the decrement is the conversion the API wants, and the two ends of the line are right.
+    //
+    // This test exists to keep that true. The adjustment looks like a bug to anyone reading it
+    // cold, and the obvious "fix" shifts every selection in the list by one move.
+    testWidgets('tapping a move in the inline list selects that move', (
+      WidgetTester tester,
+    ) async {
+      // A line long enough to check both ends: the first move and the last.
+      const pgn = '1. e4 e5 2. Nf3 Nc6';
+      const moveOptions = AnalysisOptions.pgn(
+        id: StringId('inline-moves'),
+        orientation: Side.white,
+        pgn: pgn,
+        isComputerAnalysisAllowed: false,
+        variant: Variant.standard,
+      );
+
+      final app = await makeTestProviderScopeApp(
+        tester,
+        home: const OpeningExplorerScreen(options: moveOptions),
+        authUser: authUser,
+        overrides: {
+          httpClientFactoryProvider: httpClientFactoryProvider.overrideWith((ref) {
+            return FakeHttpClientFactory(() => mockClient);
+          }),
+        },
+      );
+      await tester.pumpWidget(app);
+      await tester.pump(const Duration(milliseconds: 350));
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(OpeningExplorerScreen)),
+      );
+      int ply() =>
+          container
+              .read(analysisControllerProvider(moveOptions))
+              .requireValue
+              .currentNode
+              .position
+              .ply;
+
+      // The first move of the line: one node past the starting position.
+      await tester.tap(find.widgetWithText(InlineMoveItem, 'e4'));
+      await tester.pumpAndSettle();
+      expect(
+        ply(),
+        equals(1),
+        reason: 'the first move of the line is one node past the root',
+      );
+
+      await tester.tap(find.widgetWithText(InlineMoveItem, 'Nc6'));
+      await tester.pumpAndSettle();
+      expect(
+        ply(),
+        equals(4),
+        reason: 'the last move of 1.e4 e5 2.Nf3 Nc6 is the fourth node',
+      );
+    }, variant: kPlatformVariant);
   });
 }
 
