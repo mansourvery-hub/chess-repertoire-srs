@@ -25,11 +25,15 @@ void main() {
   // Empty / trivial input
   // ---------------------------------------------------------------------------
   group('importPgn — empty input', () {
-    test('empty string returns empty result with no errors', () {
+    // This asserted the opposite once: an empty file produced no error, so the UI announced
+    // "Imported 0 positions" as a success. An import with nothing in it is a failure, and the
+    // error is what stops that being reported as a working import.
+    test('empty string returns an error rather than a silent success', () {
       final result = importPgn('');
       expect(result.chapters, isEmpty);
       expect(result.decisions, isEmpty);
-      expect(result.errors, isEmpty);
+      expect(result.errors, isNotEmpty);
+      expect(result.errors.first.message, contains('No games found'));
     });
 
     test('whitespace-only string returns empty result', () {
@@ -532,6 +536,95 @@ void main() {
       expect(asyncResult.decisions.isNotEmpty, isTrue);
       expect(asyncResult.study.title, 'Async Study');
       expect(asyncResult.errors, isEmpty);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Orientation of a custom starting position (M12)
+  // ---------------------------------------------------------------------------
+  group('importPgn — orientation of a custom starting position', () {
+    // After 1.e4 e5, and nothing else to go on: no Orientation tag, no title
+    // keyword, no player tags. The side holding the move in the starting FEN
+    // is the only signal left — and the one the resolver's own doc comment
+    // lists as its fifth priority while never consulting.
+    const afterE5Fen = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2';
+    const blackRepertoirePgn = '[FEN "$afterE5Fen"]\n[SetUp "1"]\n\n1. Nf6 2. Nc3 Nxe4 3. Qe2 *';
+
+    test('a custom position with Black to move resolves to Black', () {
+      final result = importPgn(blackRepertoirePgn);
+
+      expect(result.errors, isEmpty);
+      expect(
+        result.chapters.first.orientation,
+        equals(Side.black),
+        reason: 'the only available signal is the side to move in the starting FEN',
+      );
+    });
+
+    test('trains the moves the player has to play, not the opponent replies', () {
+      final result = importPgn(blackRepertoirePgn);
+
+      // Black's own moves are what a Black repertoire is drilled on. Resolving
+      // to White instead shifts the whole tree a ply, so every question asked
+      // is one the player never has to answer.
+      expect(
+        result.decisions.map((d) => d.expectedMoves.first.san).toList(),
+        equals(['Nf6', 'Nxe4']),
+      );
+    });
+
+    test('an explicit orientation still overrides the starting side', () {
+      final result = importPgn(blackRepertoirePgn, repertoireSide: Side.white);
+
+      expect(result.chapters.first.orientation, equals(Side.white));
+      expect(
+        result.decisions.map((d) => d.expectedMoves.first.san).toList(),
+        equals(['Nc3', 'Qe2']),
+        reason: 'an explicit side is the first priority and must not be displaced by the FEN',
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // An import that produced no repertoire is a failure, not an empty success (M13)
+  // ---------------------------------------------------------------------------
+  group('importPgn — imports with nothing usable in them', () {
+    test('reports an error when the text contains no games', () {
+      final result = importPgn('');
+
+      expect(result.decisions, isEmpty);
+      expect(
+        result.errors,
+        isNotEmpty,
+        reason: 'an empty file imported as a success is indistinguishable from working',
+      );
+    });
+
+    test('reports an error for a header with no moves', () {
+      final result = importPgn('[Event "Test"]\n[White "A"]\n[Black "B"]\n');
+
+      expect(
+        result.errors,
+        isNotEmpty,
+        reason: 'a chapter with no moves trains nothing and must not read as imported',
+      );
+    });
+
+    test('reports an error for text that is not PGN at all', () {
+      final result = importPgn('this is not a pgn at all');
+
+      expect(
+        result.errors,
+        isNotEmpty,
+        reason: 'arbitrary text was being persisted as a chapter and announced as a success',
+      );
+    });
+
+    test('a real repertoire still imports without errors', () {
+      final result = importPgn('1. e4 e5 2. Nf3 *');
+
+      expect(result.errors, isEmpty);
+      expect(result.decisions, isNotEmpty);
     });
   });
 }

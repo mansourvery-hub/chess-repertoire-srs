@@ -217,7 +217,18 @@ ImportResult importPgn(
   if (games.isEmpty) {
     _logger.warning('PGN import for "$studyTitle" found 0 games');
     final study = Study.create(title: studyTitle, pgnHash: hash);
-    return ImportResult(study: study, chapters: const [], decisions: const [], errors: const []);
+    return ImportResult(
+      study: study,
+      chapters: const [],
+      decisions: const [],
+      errors: [
+        ImportError(
+          chapterTitle: studyTitle,
+          moveIndex: -1,
+          message: 'No games found in the PGN. Check that the text is a PGN and not empty.',
+        ),
+      ],
+    );
   }
 
   final study = Study.create(title: studyTitle, pgnHash: hash);
@@ -296,6 +307,24 @@ ImportResult importPgn(
   }
 
   sw.stop();
+
+  // A chapter whose tree holds no move for the repertoire side contributes no decision, so an
+  // import can parse cleanly, build chapters, and still contain nothing to train. Reporting that
+  // as a success is what let an empty file — or a line of plain text — be announced as imported
+  // and stored as a study. Only raised when nothing else has already explained the failure:
+  // a specific bad-FEN or illegal-move error says more than this summary would.
+  if (decisions.isEmpty && errors.isEmpty) {
+    errors.add(
+      ImportError(
+        chapterTitle: chapters.isEmpty ? studyTitle : chapters.map((c) => c.title).join(', '),
+        moveIndex: -1,
+        message:
+            'No repertoire positions were found. The PGN parsed, but it contains no moves for '
+            'the selected side.',
+      ),
+    );
+  }
+
   _logger.info(
     'PGN import completed for "$studyTitle": ${chapters.length} chapters, '
     '${decisions.length} decisions, ${errors.length} errors in ${sw.elapsedMilliseconds}ms',
@@ -345,7 +374,7 @@ Future<ImportResult> importPgnAsync(
 ///    - "for Black", "(Black)", "[Black]", "as Black", "vs White" -> Black
 ///    - "for White", "(White)", "[White]", "as White", "vs Black" -> White
 /// 4. Player tags: e.g. White "?" vs Black "Sicilian", or player containing "Repertoire"
-/// 5. Start position turn: if custom FEN has Black to move and first move is black
+/// 5. Start position turn: if the custom FEN has Black to move
 /// 6. Default: White.
 Side resolveChapterOrientation(
   PgnHeaders headers, {
@@ -354,7 +383,7 @@ Side resolveChapterOrientation(
 }) {
   if (explicitSide != null) return explicitSide;
 
-  // 1. Explicit Orientation tag
+  // 2. Explicit Orientation tag
   final orientationTag = headers['Orientation']?.trim().toLowerCase();
   if (orientationTag == 'black') {
     _logger.fine('Orientation resolved via explicit header: black');
@@ -365,7 +394,7 @@ Side resolveChapterOrientation(
     return Side.white;
   }
 
-  // 2. Event / ChapterName / StudyName keyword heuristics
+  // 3. Event / ChapterName / StudyName keyword heuristics
   final titleCandidates = [headers['ChapterName'], headers['Event'], headers['StudyName']];
   final blackKeywords = RegExp(
     r'(\bfor black\b|\bas black\b|\[black\]|\(black\)|\bblack repertoire\b|\bvs white\b)',
@@ -388,7 +417,7 @@ Side resolveChapterOrientation(
     }
   }
 
-  // 3. Player tags heuristic
+  // 4. Player tags heuristic
   final white = headers['White']?.trim();
   final black = headers['Black']?.trim();
   final whiteIsPlaceholder = white == null || white == '?' || white == '*' || white.isEmpty;
@@ -410,6 +439,15 @@ Side resolveChapterOrientation(
   if (white != null && white.toLowerCase().contains('repertoire')) {
     _logger.fine('Orientation resolved via player tag "white": white');
     return Side.white;
+  }
+
+  // 4. The side to move in a custom starting position. With no other signal this is the only
+  //    thing left that says whose moves the chapter is about, and defaulting to White instead
+  //    shifts the whole tree a ply: every decision derived from it asks the player for a move
+  //    their opponent plays.
+  if (startTurn == Side.black) {
+    _logger.fine('Orientation resolved via starting position turn: black');
+    return Side.black;
   }
 
   return Side.white;
