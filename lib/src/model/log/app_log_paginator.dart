@@ -24,6 +24,9 @@ class AppLogPaginator extends AsyncNotifier<AppLogState> {
 
   final String? _searchQuery;
 
+  /// Set while a page is being fetched. See [next].
+  bool _isFetchingPage = false;
+
   @override
   Future<AppLogState> build() async {
     final storage = await ref.read(appLogStorageProvider.future);
@@ -42,8 +45,16 @@ class AppLogPaginator extends AsyncNotifier<AppLogState> {
   }
 
   /// Fetches the next page of app logs.
+  ///
+  /// Ignored while a page is already in flight; the next scroll once that one lands will fetch
+  /// it. Without the guard two scroll notifications both read the same cursor, fetched the same
+  /// page and appended it, so its rows appeared twice and the page after it was skipped.
   Future<void> next() async {
-    if (state.hasValue && state.requireValue.hasMore) {
+    if (_isFetchingPage) return;
+    if (!state.hasValue || !state.requireValue.hasMore) return;
+
+    _isFetchingPage = true;
+    try {
       final storage = await ref.read(appLogStorageProvider.future);
       final minLevelValue = ref.read(logPreferencesProvider.select((p) => p.level.value));
       final asyncPage = await AsyncValue.guard(
@@ -54,9 +65,14 @@ class AppLogPaginator extends AsyncNotifier<AppLogState> {
           searchQuery: _searchQuery,
         ),
       );
+      // The paginator can be disposed while the read is out — a refresh, or the log level
+      // changing. Writing state afterwards throws.
+      if (!ref.mounted) return;
       state = AsyncValue.data(
         state.requireValue.copyWith(data: state.requireValue.data.add(asyncPage)),
       );
+    } finally {
+      _isFetchingPage = false;
     }
   }
 

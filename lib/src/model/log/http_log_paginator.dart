@@ -26,6 +26,13 @@ class HttpLogPaginator extends AsyncNotifier<HttpLogState> {
 
   final String? _searchQuery;
 
+  /// Set while a page is being fetched.
+  ///
+  /// Two scroll notifications can arrive before the first has updated the state. Both then read
+  /// the same cursor, fetch the same page, and append it — so the list showed every row of that
+  /// page twice and the following page was skipped.
+  bool _isFetchingPage = false;
+
   @override
   Future<HttpLogState> build() async {
     final storage = await ref.read(httpLogStorageProvider.future);
@@ -38,10 +45,14 @@ class HttpLogPaginator extends AsyncNotifier<HttpLogState> {
 
   /// Fetches the next page of HTTP logs.
   ///
-  /// This method uses a throttler to limit the rate of fetching new pages.
-  /// It updates the state with the new page of HTTP logs.
+  /// Ignored while a page is already in flight; the next scroll once that one lands will fetch
+  /// it. It updates the state with the new page of HTTP logs.
   Future<void> next() async {
-    if (state.hasValue && state.requireValue.hasMore) {
+    if (_isFetchingPage) return;
+    if (!state.hasValue || !state.requireValue.hasMore) return;
+
+    _isFetchingPage = true;
+    try {
       final storage = await ref.read(httpLogStorageProvider.future);
       final asyncPage = await AsyncValue.guard(
         () => storage.page(
@@ -50,9 +61,14 @@ class HttpLogPaginator extends AsyncNotifier<HttpLogState> {
           searchQuery: _searchQuery,
         ),
       );
+      // The paginator can be disposed while the read is out — a refresh, or the search query
+      // changing. Writing state afterwards throws.
+      if (!ref.mounted) return;
       state = AsyncValue.data(
         state.requireValue.copyWith(data: state.requireValue.data.add(asyncPage)),
       );
+    } finally {
+      _isFetchingPage = false;
     }
   }
 
