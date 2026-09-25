@@ -221,4 +221,86 @@ void main() {
       expect(observer.sanMoves, before);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Chapter selection
+  // ---------------------------------------------------------------------------
+  group('Study chapter selection', () {
+    /// Loads a study whose repository answers [onGet] for every chapter request.
+    Future<StudyController> openController(
+      StudyChapterId loadedChapter, {
+      Future<void> Function(StudyChapterId)? onGet,
+    }) async {
+      final container = await makeContainer(
+        overrides: {
+          studyRepositoryProvider: studyRepositoryProvider.overrideWith((ref) {
+            final repo = MockStudyRepository();
+            when(() => repo.getStudy(id: _studyId, chapterId: any(named: 'chapterId')))
+                .thenAnswer((invocation) async {
+              // The opening load asks for no particular chapter; later ones name one.
+              final requested = invocation.namedArguments[#chapterId] as StudyChapterId?;
+              if (requested != null) await onGet?.call(requested);
+              return (_study().copyWith(chapter: _chapter(requested ?? loadedChapter)), null, _pgn);
+            });
+            return repo;
+          }),
+        },
+      );
+
+      const options = (id: _studyId, initialChapter: null);
+      final subscription = container.listen(
+        studyControllerProvider(options),
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+      addTearDown(container.dispose);
+      await container.read(studyControllerProvider(options).future);
+      final controller = container.read(studyControllerProvider(options).notifier);
+      return controller;
+    }
+
+    test('navigating past the last chapter is a no-op rather than a crash', () async {
+      // Opened on the final chapter: there is nothing after it.
+      final controller = await openController(_chapterTwo);
+
+      await expectLater(
+        controller.nextChapter(),
+        completes,
+        reason: 'reading one past the end of the chapter list threw a RangeError',
+      );
+      expect(
+        controller.state.requireValue.study.chapter.id,
+        equals(_chapterTwo),
+        reason: 'the chapter on screen must not change',
+      );
+    });
+
+    test('the chapter you asked for last is the one you get', () async {
+      // Hold the first request open so it resolves *after* the second. A study opens on
+      // chapter one, so without holding it the first request would land first anyway.
+      var hold = false;
+      final controller = await openController(
+        _chapterOne,
+        onGet: (chapterId) {
+          if (hold && chapterId == _chapterOne) {
+            return Future<void>.delayed(const Duration(milliseconds: 150));
+          }
+          return Future<void>.value();
+        },
+      );
+
+      hold = true;
+      await Future.wait([
+        controller.goToChapter(_chapterOne),
+        controller.goToChapter(_chapterTwo),
+      ]);
+
+      expect(
+        controller.state.requireValue.study.chapter.id,
+        equals(_chapterTwo),
+        reason: 'the slower, superseded request loaded over the newer one',
+      );
+    });
+  });
 }

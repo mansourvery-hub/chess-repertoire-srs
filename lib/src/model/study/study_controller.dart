@@ -59,6 +59,13 @@ class StudyController extends AsyncNotifier<StudyState>
   late Root _root;
 
   Timer? _opponentFirstMoveTimer;
+
+  /// Gamebook chapters advance themselves after a move when they carry no comment saying why
+  /// the move was right or wrong. Kept so a chapter change can call it off.
+  Timer? _gamebookNavTimer;
+
+  /// Bumped on every chapter request. A load whose generation is stale has been superseded.
+  int _chapterGeneration = 0;
   StreamSubscription<SocketEvent>? _socketSubscription;
   final _likeDebouncer = Debouncer(const Duration(milliseconds: 500));
 
@@ -93,6 +100,7 @@ class StudyController extends AsyncNotifier<StudyState>
   Future<StudyState> build() async {
     ref.onDispose(() {
       _opponentFirstMoveTimer?.cancel();
+      _gamebookNavTimer?.cancel();
       _socketSubscription?.cancel();
       _likeDebouncer.cancel();
     });
@@ -149,19 +157,46 @@ class StudyController extends AsyncNotifier<StudyState>
       final currentChapterIndex = chapters.indexWhere(
         (chapter) => chapter.id == state.requireValue.study.chapter.id,
       );
-      goToChapter(chapters[currentChapterIndex + 1].id);
+      // There is no chapter after the last one, and a chapter that is not in the list at all
+      // has no meaningful neighbour. Reading one past the end threw a RangeError, and an
+      // index of -1 silently jumped to the first chapter instead.
+      if (currentChapterIndex < 0 || currentChapterIndex + 1 >= chapters.length) return;
+      await goToChapter(chapters[currentChapterIndex + 1].id);
     }
   }
 
   Future<void> goToChapter(StudyChapterId chapterId) async {
+    // Whatever was going to happen to the board next was for the chapter being left behind.
+    _opponentFirstMoveTimer?.cancel();
+    _gamebookNavTimer?.cancel();
+
+    final generation = ++_chapterGeneration;
     final (study, analysisSummary, pgn) = await ref
         .read(studyRepositoryProvider)
         .getStudy(id: options.id, chapterId: chapterId);
 
-    await _loadChapter(study, pgn, chapterId: chapterId, analysisSummary: analysisSummary);
+    // A request the user has moved past must not load. Two chapters tapped in quick succession
+    // resolve in whatever order the repository happens to answer, and the slower one was
+    // putting the chapter they had already left back on screen.
+    if (generation != _chapterGeneration) return;
+
+    final chapter = await _loadChapter(
+      study,
+      pgn,
+      chapterId: chapterId,
+      analysisSummary: analysisSummary,
+    );
+
+    // _loadChapter returns the new state rather than assigning it — `build` publishes what it
+    // gets back, and this path used to discard it. With nothing published, state.study.chapter
+    // stayed on the chapter the study opened on for the rest of the session: `nextChapter`
+    // resolved the same neighbour every time it was pressed, and the chapter's own orientation,
+    // gamebook flag and feature set never took effect.
+    state = AsyncData(chapter.copyWith(chatState: state.requireValue.chatState));
+
     // Switching chapters does not re-run [runBuild], so fetch the new mainline's
     // openings explicitly here.
-    if (state.hasValue) initMainlineOpenings();
+    initMainlineOpenings();
     _ensureItsOurTurnIfGamebook();
   }
 
@@ -426,7 +461,12 @@ class StudyController extends AsyncNotifier<StudyState>
         state.requireValue.gamebookComment == null &&
         state.requireValue.currentPosition != null &&
         state.requireValue.currentPosition!.turn != state.requireValue.pov) {
+      final chapter = state.requireValue.study.chapter.id;
       _opponentFirstMoveTimer = Timer(const Duration(milliseconds: 750), () {
+        // Fenced to the chapter that scheduled it. A chapter change cancels this timer, but the
+        // change can land in the gap before the cancel, and playing the move then would advance
+        // a chapter this was never asked about.
+        if (!state.hasValue || state.requireValue.study.chapter.id != chapter) return;
         userNext();
       });
     }
@@ -448,7 +488,13 @@ class StudyController extends AsyncNotifier<StudyState>
       final comment = state.requireValue.gamebookComment;
       // If there's no explicit comment why the move was good/bad, trigger next/previous move automatically
       if (comment == null) {
-        Timer(const Duration(milliseconds: 750), () {
+        // Stored, and fenced to the chapter it was started in. Held only by the event loop, this
+        // fired 750ms later against whatever was on screen by then, stepping through a chapter
+        // it was never scheduled for.
+        _gamebookNavTimer?.cancel();
+        final chapter = state.requireValue.study.chapter.id;
+        _gamebookNavTimer = Timer(const Duration(milliseconds: 750), () {
+          if (!state.hasValue || state.requireValue.study.chapter.id != chapter) return;
           if (state.requireValue.isOnMainline) {
             userNext();
           } else {
