@@ -17,6 +17,7 @@ import 'package:chess_srs/src/model/common/socket.dart';
 import 'package:chess_srs/src/model/common/uci.dart';
 import 'package:chess_srs/src/model/engine/evaluation_mixin.dart';
 import 'package:chess_srs/src/model/engine/evaluation_preferences.dart';
+import 'package:chess_srs/src/model/engine/position_evaluator.dart';
 import 'package:chess_srs/src/model/game/game_socket_events.dart';
 import 'package:chess_srs/src/model/game/player.dart';
 import 'package:chess_srs/src/model/study/study.dart';
@@ -883,8 +884,11 @@ sealed class StudyState
 
   /// Whether the engine is available for evaluation
   @override
-  bool isEngineAvailable(EngineEvaluationPrefState prefs) =>
-      isComputerAnalysisAllowed && prefs.isEnabled;
+  bool isEngineAvailable(EngineEvaluationPrefState prefs) => isLocalEngineOffered(
+    allowed: isComputerAnalysisAllowed,
+    enabled: prefs.isEnabled,
+    supported: isNativeEngineSupported,
+  );
 
   bool get isOpeningExplorerAvailable => !gamebookActive && study.chapter.features.explorer;
 

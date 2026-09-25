@@ -48,6 +48,25 @@ bool get isNativeEngineSupported =>
     !kIsWeb &&
     (Platform.environment.containsKey('FLUTTER_TEST') || Platform.isAndroid || Platform.isIOS);
 
+/// Whether the local engine should be offered for what is on screen.
+///
+/// Three separate things have to hold, and the third is the one that gets forgotten: the
+/// feature is permitted, the user has switched it on, and *this platform can run a native
+/// engine at all*. Where it cannot, the evaluator resolves to a null engine, so offering the
+/// gauge, the hint button and practice feedback means offering controls that can never answer
+/// — and in practice mode every move waits out the full search timeout for an evaluation that
+/// was never going to arrive.
+///
+/// [supported] is passed in rather than read from [isNativeEngineSupported] here so the rule can
+/// be exercised for the platforms that cannot run one; the callers below are what tie it to the
+/// real platform.
+bool isLocalEngineOffered({
+  required bool allowed,
+  required bool enabled,
+  required bool supported,
+}) =>
+    allowed && enabled && supported;
+
 /// The evaluator for one [EvaluationContext] — one game, study, puzzle or offline game.
 ///
 /// Per context rather than app-wide, so results never have to be demultiplexed: a screen watching

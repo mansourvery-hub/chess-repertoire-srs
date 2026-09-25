@@ -17,6 +17,7 @@ import 'package:chess_srs/src/model/common/socket.dart';
 import 'package:chess_srs/src/model/common/uci.dart';
 import 'package:chess_srs/src/model/engine/evaluation_mixin.dart';
 import 'package:chess_srs/src/model/engine/evaluation_preferences.dart';
+import 'package:chess_srs/src/model/engine/position_evaluator.dart';
 import 'package:chess_srs/src/model/game/exported_game.dart';
 import 'package:chess_srs/src/model/game/game.dart';
 import 'package:chess_srs/src/model/game/game_repository_providers.dart';
@@ -860,7 +861,11 @@ sealed class AnalysisState
       pendingMove != null ? forecast?.linesStartingWith(pendingMove!.move) : null;
 
   @override
-  bool isEngineAvailable(EngineEvaluationPrefState prefs) => isEngineAllowed && prefs.isEnabled;
+  bool isEngineAvailable(EngineEvaluationPrefState prefs) => isLocalEngineOffered(
+    allowed: isEngineAllowed,
+    enabled: prefs.isEnabled,
+    supported: isNativeEngineSupported,
+  );
 
   @override
   Position get currentPosition => currentNode.position;
