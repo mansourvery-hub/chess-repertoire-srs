@@ -229,13 +229,10 @@ class _Body extends ConsumerWidget {
   }
 }
 
-class _MoveList extends ConsumerWidget implements PreferredSizeWidget {
+class _MoveList extends ConsumerWidget {
   const _MoveList({required this.options});
 
   final AnalysisOptions options;
-
-  @override
-  Size get preferredSize => const Size.fromHeight(40.0);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
