@@ -526,6 +526,49 @@ void main() {
       expect(await file.exists(), isFalse);
     });
 
+    test('deletes the file when the body is short of the expected length', () async {
+      final file = await targetFile();
+      // No Content-Length at all: a chunked response, which is what a CDN or proxy sends when
+      // it cannot determine the size up front. The caller has said how many bytes to expect,
+      // and that promise is the only completeness signal there is here.
+      final client = MockClient.streaming((request, bodyStream) async {
+        return http.StreamedResponse(
+          Stream<List<int>>.fromIterable([utf8.encode('hel')]),
+          200,
+        );
+      });
+
+      final result = await downloadFile(
+        client,
+        Uri.parse('https://example.org/file'),
+        file,
+        expectedLength: 5,
+      );
+
+      expect(result, isFalse, reason: 'three bytes were asked for and five were promised');
+      expect(await file.exists(), isFalse);
+    });
+
+    test('accepts a body of exactly the expected length with no Content-Length', () async {
+      final file = await targetFile();
+      final client = MockClient.streaming((request, bodyStream) async {
+        return http.StreamedResponse(
+          Stream<List<int>>.fromIterable([utf8.encode('hello')]),
+          200,
+        );
+      });
+
+      final result = await downloadFile(
+        client,
+        Uri.parse('https://example.org/file'),
+        file,
+        expectedLength: 5,
+      );
+
+      expect(result, isTrue);
+      expect(await file.readAsString(), 'hello');
+    });
+
     test('returns false when the request throws', () async {
       final file = await targetFile();
       final client = MockClient((request) async => throw const SocketException('no route'));

@@ -300,8 +300,13 @@ Future<bool> downloadFile(
 
   // Fewer bytes than announced means the body was cut short. More is not an error: a client that
   // transparently decompresses the body reports the compressed length here.
-  if (contentLength != null && received < contentLength) {
-    return await discard('got $received bytes out of $contentLength');
+  //
+  // The expected length counts, not only the one the server chose to send. A chunked response
+  // carries no Content-Length at all, and in that case the caller's expectedLength is the only
+  // completeness signal there is — so testing contentLength alone skipped the check entirely for
+  // those responses and reported success for a file that was short.
+  if (totalLength != null && received < totalLength) {
+    return await discard('got $received bytes out of $totalLength');
   }
 
   final int length;
