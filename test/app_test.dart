@@ -71,14 +71,31 @@ void main() {
     expect(find.byType(MaterialApp), findsOneWidget);
     expect(find.byType(ReviewScreen), findsOneWidget);
 
-    // wait for the startup requests and animations to complete
-    await tester.pumpAndSettle(const Duration(milliseconds: 100));
+    // Both the startup token check and the 401 handling that follows are fire-and-forget
+    // requests rather than anything tied to a frame, so pumpAndSettle has no relationship to
+    // them: it returns once animations stop scheduling frames, and its duration is the gap
+    // between pumps rather than a total wait. That made this test depend on machine speed —
+    // it passed on a fast one and failed on a slower runner with the request never sent.
+    // Wait for the condition itself, bounded so a real regression still fails rather than
+    // hanging. The loops exit as soon as the condition holds, so the common case is one pass.
+    for (var i = 0; i < 100 && tokenTestRequests == 0; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
 
     // should have made a request to test the token
     expect(tokenTestRequests, 1);
 
-    // authUser is not active anymore
     final container = ProviderScope.containerOf(tester.element(find.byType(Application)));
+
+    // The stale login is cleared once the 401 has been handled, which lands after the token
+    // check above.
+    if (container.read(authControllerProvider) != null) {
+      for (var i = 0; i < 100 && container.read(authControllerProvider) != null; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    // authUser is not active anymore
     expect(container.read(authControllerProvider), isNull);
   }, variant: kPlatformVariant);
 
