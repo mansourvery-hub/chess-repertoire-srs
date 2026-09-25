@@ -63,6 +63,14 @@ class ServerAnalysisService {
 
   SocketClient? _socketClient;
 
+  /// Monotonic request counter.
+  ///
+  /// Every request claims the current value, and every asynchronous continuation belonging to that
+  /// request re-checks it before touching shared state. Starting a new request — or cancelling the
+  /// current one — moves it on, so a continuation that was already in flight when the world moved
+  /// on can tell that it is stale and drop out instead of overwriting the newer request.
+  int _requestGeneration = 0;
+
   /// Request server analysis for a game.
   ///
   /// This will return a future that completes when the server analysis is
@@ -77,6 +85,8 @@ class ServerAnalysisService {
     }
 
     _cancelAnalysis();
+    final generation = _requestGeneration;
+    bool isCurrent() => generation == _requestGeneration;
 
     final uri = Uri(
       path: switch (source) {
@@ -85,7 +95,9 @@ class ServerAnalysisService {
       },
     );
 
-    _socketClient = SocketClient(
+    // Held locally as well as on the field: a cancellation disposes the field and nulls it, and
+    // these continuations can run after that.
+    final socketClient = SocketClient(
       uri,
       channelFactory: ref.read(webSocketChannelFactoryProvider),
       getSession: () => ref.read(authControllerProvider),
@@ -93,24 +105,25 @@ class ServerAnalysisService {
       deviceInfo: ref.read(preloadedDataProvider).requireValue.deviceInfo,
       sri: ref.read(preloadedDataProvider).requireValue.sri,
     );
-    _socketClient!.connect();
-    _analysisCompleter = Completer<void>();
-    _socketSubscription = _socketClient!.stream.listen(
+    _socketClient = socketClient;
+    socketClient.connect();
+    final completer = Completer<void>();
+    _analysisCompleter = completer;
+    _socketSubscription = socketClient.stream.listen(
       (event) {
+        if (!isCurrent()) return;
         if (event.topic == 'analysisProgress') {
           final data = ServerEvalEvent.fromJson(event.data as Map<String, dynamic>);
 
           _analysisProgress.value = (source, data);
 
-          if (data.isAnalysisComplete) {
-            if (_analysisCompleter != null && !_analysisCompleter!.isCompleted) {
-              _analysisCompleter?.complete();
-            }
+          if (data.isAnalysisComplete && !completer.isCompleted) {
+            completer.complete();
           }
         }
       },
       onDone: () {
-        _cancelAnalysis();
+        if (isCurrent()) _cancelAnalysis();
       },
       cancelOnError: true,
     );
@@ -119,6 +132,9 @@ class ServerAnalysisService {
       case _GameServerAnalysisSource(:final gameId):
         try {
           await ref.read(gameRepositoryProvider).requestServerAnalysis(gameId);
+          // The request took time. A newer request may own the service by now, in which case
+          // claiming the current analysis here would resurrect the one just replaced.
+          if (!isCurrent()) return;
           _currentAnalysis.value = source;
         } on ServerException catch (e, st) {
           // 400 means analysis already requested (most likely) so we'll still try to listen to the socket
@@ -126,39 +142,55 @@ class ServerAnalysisService {
           // TODO: should disambiguate this better. Server will also return an error when max number
           // of analyses is reached.
           if (e.statusCode == 400) {
+            if (!isCurrent()) return;
             _logger.info('Analysis already requested for game $gameId');
             _currentAnalysis.value = source;
           } else {
             _logger.severe('ServerException requesting server analysis', e, st);
-            _cancelAnalysis();
+            if (isCurrent()) _cancelAnalysis();
             rethrow;
           }
         } catch (e, st) {
           _logger.severe('Error requesting server analysis', e, st);
-          _cancelAnalysis();
+          if (isCurrent()) _cancelAnalysis();
           rethrow;
         }
 
       case _StudyChapterServerAnalysisSource(:final chapterId):
         _currentAnalysis.value = source;
-        _socketClient!.firstConnection
+        // `firstConnection` settling after a timeout or a cancellation used to reach back through
+        // the field, which by then was null. The captured client is disposed in that case, and
+        // `isCurrent` is false, so there is nothing left to send on.
+        socketClient.firstConnection
             .timeout(const Duration(seconds: 3))
-            .onError((e, st) {
+            .then((_) {
+              if (!isCurrent()) return;
+              socketClient.send('requestAnalysis', chapterId);
+            })
+            .catchError((Object e, StackTrace st) {
+              if (!isCurrent()) return;
               _logger.severe('Error connecting to analysis socket', e, st);
               _cancelAnalysis();
-            })
-            .whenComplete(() {
-              _socketClient!.send('requestAnalysis', chapterId);
             });
     }
 
-    _analysisCompleter?.future.timeout(kMaxWaitForServerAnalysis).whenComplete(() {
-      _cancelAnalysis();
-    });
+    // A deadline, not an error: running out of time is the ordinary end of this wait, so the
+    // rejection is absorbed here rather than surfacing as an unhandled asynchronous error.
+    unawaited(
+      completer.future
+          .timeout(kMaxWaitForServerAnalysis)
+          .then((_) {}, onError: (Object _, StackTrace _) {})
+          .whenComplete(() {
+            if (isCurrent()) _cancelAnalysis();
+          }),
+    );
   }
 
   /// Cancel the ongoing server analysis, if any.
   void _cancelAnalysis() {
+    // Retire the current request first, so any continuation still in flight for it becomes stale
+    // and bails rather than writing into the state this is about to clear.
+    _requestGeneration++;
     _socketSubscription?.cancel();
     _socketSubscription = null;
     _currentAnalysis.value = null;

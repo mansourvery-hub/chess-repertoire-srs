@@ -1,10 +1,129 @@
+import 'dart:async';
+
 import 'package:chess_srs/src/model/analysis/server_analysis_service.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
+import 'package:chess_srs/src/model/common/id.dart';
 import 'package:chess_srs/src/model/common/node.dart';
+import 'package:chess_srs/src/network/http.dart';
+import 'package:chess_srs/src/network/socket.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+
+import '../../network/fake_http_client_factory.dart';
+import '../../network/fake_websocket_channel.dart';
+import '../../test_container.dart';
+
+/// A channel factory whose connections never complete, so a socket's `firstConnection` future
+/// stays pending and the service's own connect timeout is the thing under test.
+class _NeverConnectingChannelFactory extends WebSocketChannelFactory {
+  const _NeverConnectingChannelFactory();
+
+  @override
+  Future<WebSocketChannel> create(
+    String url, {
+    Map<String, dynamic>? headers,
+    Duration timeout = const Duration(seconds: 10),
+  }) => Completer<WebSocketChannel>().future;
+}
 
 void main() {
+  group('ServerAnalysisService request lifecycle', () {
+    const gameA = GameId('gameAAAA');
+    const gameB = GameId('gameBBBB');
+
+    /// A container whose `request-analysis` POSTs are held open until the matching entry of
+    /// [releaseRequests] is invoked, so a test can start a second request while the first is still
+    /// awaiting its HTTP call.
+    final releaseRequests = <VoidCallback>[];
+
+    Future<ProviderContainer> makeServiceContainer() {
+      return makeContainer(
+        overrides: {
+          httpClientFactoryProvider: httpClientFactoryProvider.overrideWith(
+            (ref) => FakeHttpClientFactory(
+              () => MockClient((request) async {
+                if (request.url.path.endsWith('/request-analysis')) {
+                  final gate = Completer<void>();
+                  releaseRequests.add(() {
+                    if (!gate.isCompleted) gate.complete();
+                  });
+                  await gate.future;
+                }
+                return http.Response('{}', 200);
+              }),
+            ),
+          ),
+          // A channel per connection, as a real reconnect gets.
+          webSocketChannelFactoryProvider: webSocketChannelFactoryProvider.overrideWithValue(
+            FakeWebSocketChannelFactory((uri) => FakeWebSocketChannel(uri)),
+          ),
+        },
+      );
+    }
+
+    tearDown(releaseRequests.clear);
+
+    test('a slow request does not claim the service after a newer one started', () async {
+      final container = await makeServiceContainer();
+      addTearDown(container.dispose);
+      final service = container.read(serverAnalysisServiceProvider);
+
+      // Request A goes out and parks on its HTTP call.
+      final first = service.requestAnalysis(const ServerAnalysisSource.game(gameId: gameA));
+      await pumpEventQueue();
+      expect(releaseRequests, hasLength(1));
+
+      // Request B starts and completes while A is still waiting.
+      final second = service.requestAnalysis(const ServerAnalysisSource.game(gameId: gameB));
+      await pumpEventQueue();
+      expect(releaseRequests, hasLength(2));
+      releaseRequests[1]();
+      await second;
+      expect(service.currentAnalysis.value, const ServerAnalysisSource.game(gameId: gameB));
+
+      // Now let A finish. It must not overwrite the newer request's claim.
+      releaseRequests[0]();
+      await first;
+      expect(
+        service.currentAnalysis.value,
+        const ServerAnalysisSource.game(gameId: gameB),
+        reason: 'a request that finished late must not displace the one that replaced it',
+      );
+    });
+
+    test('a study request that times out does not send on a disposed socket', () async {
+      // `firstConnection` only completes once `create` returns, so a create that never returns
+      // is what actually exercises the timeout path.
+      final container = await makeContainer(
+        overrides: {
+          webSocketChannelFactoryProvider: webSocketChannelFactoryProvider.overrideWith(
+            (ref) => const _NeverConnectingChannelFactory(),
+          ),
+        },
+      );
+      addTearDown(container.dispose);
+      final service = container.read(serverAnalysisServiceProvider);
+
+      const source = ServerAnalysisSource.studyChapter(
+        studyId: StudyId('study'),
+        chapterId: StudyChapterId('chapter'),
+      );
+
+      // The socket connect times out after 3s, which cancels the analysis and nulls the field.
+      // The continuation that follows used to reach back through that field and crash.
+      await service.requestAnalysis(source);
+      await Future<void>.delayed(const Duration(seconds: 4));
+
+      expect(service.currentAnalysis.value, isNull);
+      // Reaching here without an unhandled asynchronous error is the assertion that matters.
+    }, timeout: const Timeout(Duration(seconds: 30)));
+  });
+
   group('ServerAnalysisService.mergeOngoingAnalysis', () {
     test('merges analysis using UCI instead of id field', () {
       // Create a simple game tree: e2e4
