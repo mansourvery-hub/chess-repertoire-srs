@@ -65,6 +65,39 @@ void main() {
       return container;
     }
 
+
+    test('refuses an import with nothing in it instead of storing an untrainable study', () async {
+      final container = createContainer();
+      final controller = container.read(reviewControllerProvider.notifier);
+
+      await expectLater(
+        controller.importPgnText(pgnText: '', title: 'Empty'),
+        throwsA(isA<FormatException>()),
+        reason: 'a study with no positions is not reviewable and must not be persisted',
+      );
+
+      final studies = await repo.getAllStudies();
+      expect(
+        studies.where((s) => s.title == 'Empty'),
+        isEmpty,
+        reason: 'the failed import left a study behind',
+      );
+    });
+
+    test('still stores an import that produced positions alongside errors', () async {
+      final container = createContainer();
+      final controller = container.read(reviewControllerProvider.notifier);
+
+      // Illegal move after a real opening: the usable part must survive.
+      const partial = '1. e4 e5 2. Nf3 Qxh8 *';
+      final result = await controller.importPgnText(pgnText: partial, title: 'Partial');
+
+      expect(result.errors, isNotEmpty, reason: 'the illegal move should be reported');
+      expect(result.decisions, isNotEmpty, reason: 'the moves before the error are usable');
+      final studies = await repo.getAllStudies();
+      expect(studies.where((s) => s.title == 'Partial'), hasLength(1));
+    });
+
     test('initializes with empty repository: 0 studies, no prompt', () async {
       final container = createContainer();
       final state = await container.read(reviewControllerProvider.future);

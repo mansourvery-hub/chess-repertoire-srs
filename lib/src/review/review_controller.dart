@@ -1068,6 +1068,18 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
       );
     }
 
+    // Nothing to train means there is nothing worth keeping: storing the study would leave an
+    // empty repertoire in the library that opens onto a blank board, with the only record of the
+    // failure being a success message. A partial import is a different case — it has positions,
+    // so it is saved and its errors travel with it.
+    if (result.decisions.isEmpty) {
+      final reason = result.errors.isEmpty
+          ? 'the PGN contained no moves for the selected side'
+          : result.errors.first.message;
+      _logger.warning('Rejecting import of "${result.study.title}": $reason');
+      throw FormatException('Nothing to import — $reason');
+    }
+
     await _repository.saveImportResult(result);
     await changeScope(ReviewScope.study(result.study.id));
     return result;
