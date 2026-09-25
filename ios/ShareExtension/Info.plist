@@ -31,7 +31,7 @@
 				SUBQUERY (
 					$extensionItem.attachments,
 					$attachment,
-					ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.lichess.pgn"
+					ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.chesssrs.pgn"
 					).@count == 1
 				).@count == 1</string>
 		</dict>
