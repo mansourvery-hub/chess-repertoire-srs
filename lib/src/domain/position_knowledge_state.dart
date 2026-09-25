@@ -17,6 +17,26 @@ String canonicalKey(String fenKey, String expectedMoveUci) {
   return sha1.convert(utf8.encode(input)).toString();
 }
 
+/// Computes the canonical identity key for a position and its *complete* set of accepted
+/// continuations.
+///
+/// Formatted as: `sha1("<fenKey>|<sorted uci>|<sorted uci>|...")`.
+///
+/// A repertoire position is not identified by one representative move: it is identified by the
+/// whole question it asks the player ("from here, any of these is correct"). Two positions that
+/// share a FEN and a first move but offer different continuation sets are different questions and
+/// must not share SRS memory, so every accepted move participates in the key.
+///
+/// The moves are sorted, so two PGNs that spell the same repertoire with their branches in a
+/// different order converge on the same memory item rather than forking it.
+///
+/// Occurrence identity is deliberately *not* part of this key. [RepertoireDecision.id] is the
+/// per-occurrence identity; this is the shared position knowledge that transpositions converge on.
+String canonicalKeyForPosition(String fenKey, Iterable<String> acceptedMoveUcis) {
+  final sortedMoves = acceptedMoveUcis.toList()..sort();
+  return sha1.convert(utf8.encode([fenKey, ...sortedMoves].join('|'))).toString();
+}
+
 /// The single source of truth for long-term memory of a specific chess position and move.
 ///
 /// Keyed by [canonicalId] = `sha1(fenKey + expectedMoveUci)`. Multiple [RepertoireDecision]s

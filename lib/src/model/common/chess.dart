@@ -424,3 +424,17 @@ extension ChessExtension on Pick {
     }
   }
 }
+
+/// The canonical identity of a position, used to decide whether two positions are the same
+/// for repetition purposes.
+///
+/// Formatted as a 4-field FEN: `<placement> <turn> <castling> <ep>` (QUALITY.md §2.3, Position
+/// Identity Integrity). Piece placement alone is not an identity: the same pieces with a
+/// different side to move, different castling rights or a different en-passant square are
+/// different positions, and treating them as the same would claim a repetition that never
+/// happened.
+String positionIdentity(String fullFen) {
+  final parts = fullFen.split(' ');
+  if (parts.length < 4) return fullFen; // malformed — return as-is
+  return '${parts[0]} ${parts[1]} ${parts[2]} ${parts[3]}';
+}

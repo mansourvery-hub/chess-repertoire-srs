@@ -205,15 +205,20 @@ class SqliteStudyRepository implements StudyRepository {
             }
           }
 
+          // Events and canonical rows are keyed by the canonical id, which is not the
+          // `srs_decision.id` these chunks hold. Both spellings are removed so a
+          // legacy per-occurrence row and a current canonical row both go.
+          final bothIds = <String>{...chunk, ...canonicalRows.map((r) => r['canonicalStateId']).whereType<String>()}.toList();
+          final bothPlaceholders = List.filled(bothIds.length, '?').join(',');
           await txn.delete(
             kTableSrsReviewEvent,
-            where: 'decisionId IN ($placeholders)',
-            whereArgs: chunk,
+            where: 'decisionId IN ($bothPlaceholders)',
+            whereArgs: bothIds,
           );
           await txn.delete(
             kTableSrsReviewState,
-            where: 'decisionId IN ($placeholders)',
-            whereArgs: chunk,
+            where: 'decisionId IN ($bothPlaceholders)',
+            whereArgs: bothIds,
           );
         }
 
@@ -321,25 +326,56 @@ class SqliteStudyRepository implements StudyRepository {
     await _db.transaction((txn) async {
       final decisions = await txn.query(
         kTableSrsDecision,
-        columns: ['id'],
+        columns: ['id', 'canonicalStateId'],
         where: 'chapterId = ?',
         whereArgs: [id],
       );
       final decisionIds = decisions.map((d) => d['id']! as String).toList();
+      final canonicalIds = decisions
+          .map((d) => d['canonicalStateId'] as String?)
+          .whereType<String>()
+          .where((c) => c.isNotEmpty)
+          .toSet();
 
       if (decisionIds.isNotEmpty) {
-        final placeholders = List.filled(decisionIds.length, '?').join(',');
+        // Rows keyed by the per-occurrence id belong to this chapter outright.
+        final occurrencePlaceholders = List.filled(decisionIds.length, '?').join(',');
         await txn.delete(
           kTableSrsReviewEvent,
-          where: 'decisionId IN ($placeholders)',
+          where: 'decisionId IN ($occurrencePlaceholders)',
           whereArgs: decisionIds,
         );
         await txn.delete(
           kTableSrsReviewState,
-          where: 'decisionId IN ($placeholders)',
+          where: 'decisionId IN ($occurrencePlaceholders)',
           whereArgs: decisionIds,
         );
         await txn.delete(kTableSrsDecision, where: 'chapterId = ?', whereArgs: [id]);
+
+        // Rows keyed by the canonical id describe the *position*, not the occurrence. Another
+        // chapter reaching the same position still needs them, so they only go when this was the
+        // last decision referring to it.
+        for (final canonicalId in canonicalIds) {
+          // Still referenced by some other decision, so this position outlives the chapter.
+          const ownedElsewhere =
+              'SELECT canonicalStateId FROM $kTableSrsDecision '
+              'WHERE canonicalStateId IS NOT NULL';
+          await txn.delete(
+            kTablePositionKnowledgeState,
+            where: 'canonicalId = ? AND canonicalId NOT IN ($ownedElsewhere)',
+            whereArgs: [canonicalId],
+          );
+          await txn.delete(
+            kTableSrsReviewState,
+            where: 'decisionId = ? AND decisionId NOT IN ($ownedElsewhere)',
+            whereArgs: [canonicalId],
+          );
+          await txn.delete(
+            kTableSrsReviewEvent,
+            where: 'decisionId = ? AND decisionId NOT IN ($ownedElsewhere)',
+            whereArgs: [canonicalId],
+          );
+        }
       }
 
       await txn.delete(kTableSrsChapter, where: 'id = ?', whereArgs: [id]);

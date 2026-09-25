@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:chess_srs/src/persistence/canonical_rekey_migration.dart';
 import 'package:chess_srs/src/persistence/srs_schema.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -67,7 +68,7 @@ Future<Database> openAppDatabase(DatabaseFactory dbFactory, String path) {
   return dbFactory.openDatabase(
     path,
     options: OpenDatabaseOptions(
-      version: 13,
+      version: 14,
       onConfigure: (db) async {
         final version = await _getDatabaseVersion(db);
         _logger.info('SQLite version: $version');
@@ -171,7 +172,33 @@ Future<Database> openAppDatabase(DatabaseFactory dbFactory, String path) {
             );
           }
         }
+
+        // Not a schema change: v14 redefines the canonical review id and backfills history that
+        // v10 never copied. Both read before they write, so they cannot be folded into the DDL
+        // batch.
+        // The data migrations read and write the open database, and a batch is only applied on
+        // commit — so the schema has to land before they run, or they read the pre-upgrade tables.
         await batch.commit();
+
+        if (oldVersion < 14) {
+          final rekey = await rekeyCanonicalReviewState(db);
+          _logger.info(
+            'Canonical rekey: ${rekey.decisionsRemapped} decisions, '
+            '${rekey.statesRemapped} states (${rekey.statesMerged} merged), '
+            '${rekey.skipped} skipped',
+          );
+
+          // v10 created the canonical table and the column that points at it without ever copying
+          // the existing history into them. After the rekey has settled the keys, give every
+          // canonical position a state derived from the legacy rows, so a position reached by
+          // transposition stops being scheduled from two different sets of numbers.
+          final backfill = await backfillCanonicalStatesFromLegacy(db);
+          _logger.info(
+            'Canonical backfill: ${backfill.statesCreated} states created '
+            '(${backfill.collisionsMerged} from collisions)',
+          );
+        }
+
         _logger.info('Database schema upgraded successfully to v$newVersion');
       },
       onDowngrade: onDatabaseDowngradeDelete,

@@ -25,6 +25,57 @@ void main() {
       expect(canonicalKey(fen1, 'e7e5'), isNot(equals(canonicalKey(fen1, 'c7c5'))));
     });
 
+    group('canonicalKeyForPosition', () {
+      const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
+
+      test('is deterministic and a SHA-1 hex string', () {
+        final a = canonicalKeyForPosition(start, ['e2e4']);
+        final b = canonicalKeyForPosition(start, ['e2e4']);
+
+        expect(a, equals(b));
+        expect(a.length, 40);
+      });
+
+      test('ignores the order the accepted moves are listed in', () {
+        expect(
+          canonicalKeyForPosition(start, ['e2e4', 'd2d4', 'g1f3']),
+          equals(canonicalKeyForPosition(start, ['g1f3', 'd2d4', 'e2e4'])),
+          reason: 'reordered branches must not fork the same repertoire',
+        );
+      });
+
+      test('differs when the accepted set differs even if the first move matches', () {
+        // This is the collision the first-child key could not see.
+        expect(
+          canonicalKeyForPosition(start, ['e2e4']),
+          isNot(equals(canonicalKeyForPosition(start, ['e2e4', 'd2d4']))),
+        );
+        expect(
+          canonicalKeyForPosition(start, ['e2e4', 'd2d4']),
+          isNot(equals(canonicalKeyForPosition(start, ['e2e4', 'c2c4']))),
+        );
+      });
+
+      test('differs when the position differs even if the accepted set matches', () {
+        const elsewhere = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3';
+        expect(
+          canonicalKeyForPosition(start, ['e7e5']),
+          isNot(equals(canonicalKeyForPosition(elsewhere, ['e7e5']))),
+          reason: 'distinct positions must never share SRS memory',
+        );
+      });
+
+      test('a single-move set agrees with no other set', () {
+        // Regression guard: an earlier attempt hashed the moves alone, dropping the position
+        // entirely, which merged every position offering the same move.
+        const elsewhereFEN = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3';
+        expect(
+          canonicalKeyForPosition(start, ['e2e4']),
+          isNot(equals(canonicalKeyForPosition(elsewhereFEN, ['e2e4']))),
+        );
+      });
+    });
+
     test('PositionKnowledgeState cold defaults and due calculation', () {
       final now = DateTime(2026, 9, 18, 12);
       final cold = PositionKnowledgeState.cold('canonical-123');

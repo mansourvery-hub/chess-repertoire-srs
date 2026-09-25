@@ -1,6 +1,7 @@
 // Copyright (C) 2024 ChessSRS contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:chess_srs/src/db/database.dart';
@@ -350,6 +351,158 @@ void main() {
         expect(await repo.getDecision(decision.id), isNull);
         expect(await repo.getReviewState(decision.id), isNull);
         expect(await repo.getReviewEvents(decision.id), isEmpty);
+      } finally {
+        await db.close();
+      }
+    });
+
+    test(
+      'deleteChapter removes the review events and knowledge state stored under the canonical id',
+      () async {
+        // The app records a review event against the decision's *canonical* id, so a deletion that
+        // only matches the per-occurrence id removes nothing at all.
+        final db = await openAppDatabase(databaseFactoryFfi, dbPath);
+        final repo = SqliteStudyRepository(db);
+
+        try {
+          final now = DateTime.utc(2026, 9, 16, 12);
+          final study = Study(id: 's-ch-del', title: 'S', createdAt: now, updatedAt: now);
+          final chapter = Chapter(id: 'ch-del-1', studyId: study.id, sourceOrder: 0);
+          const decision = RepertoireDecision(
+            id: 'occ-1',
+            studyId: 's-ch-del',
+            chapterId: 'ch-del-1',
+            nodeId: 'n1',
+            expectedMoves: [],
+            canonicalStateId: 'canon-1',
+          );
+          const state = ReviewState(decisionId: 'canon-1', repetitionCount: 3);
+          final event = ReviewEvent(
+            decisionId: 'canon-1',
+            when: now,
+            result: ReviewResult.correct,
+            oldState: state,
+            newState: state,
+          );
+
+          await repo.saveStudy(study);
+          await repo.saveChapter(chapter);
+          await repo.saveDecision(decision);
+          await repo.saveReviewState(state);
+          await repo.saveReviewEvent(event);
+
+          expect((await repo.getReviewEvents('canon-1')).length, 1);
+          expect(await repo.getReviewState('canon-1'), isNotNull);
+
+          await repo.deleteChapter(chapter.id);
+
+          expect(
+            await repo.getReviewEvents('canon-1'),
+            isEmpty,
+            reason: 'the event was stored under the canonical id and must be found there',
+          );
+          expect(
+            await repo.getReviewState('canon-1'),
+            isNull,
+            reason: 'nothing references this position any more',
+          );
+          expect(await repo.getDecision('occ-1'), isNull);
+        } finally {
+          await db.close();
+        }
+      },
+    );
+
+    test('deleteStudy removes review events stored under the canonical id', () async {
+      final db = await openAppDatabase(databaseFactoryFfi, dbPath);
+      final repo = SqliteStudyRepository(db);
+
+      try {
+        final now = DateTime.utc(2026, 9, 16, 12);
+        final study = Study(id: 's-canon-del', title: 'S', createdAt: now, updatedAt: now);
+        final chapter = Chapter(id: 'ch-canon-del', studyId: study.id, sourceOrder: 0);
+        const decision = RepertoireDecision(
+          id: 'occ-2',
+          studyId: 's-canon-del',
+          chapterId: 'ch-canon-del',
+          nodeId: 'n1',
+          expectedMoves: [],
+          canonicalStateId: 'canon-2',
+        );
+        const state = ReviewState(decisionId: 'canon-2');
+        final event = ReviewEvent(
+          decisionId: 'canon-2',
+          when: now,
+          result: ReviewResult.correct,
+          oldState: state,
+          newState: state,
+        );
+
+        await repo.saveStudy(study);
+        await repo.saveChapter(chapter);
+        await repo.saveDecision(decision);
+        await repo.saveReviewState(state);
+        await repo.saveReviewEvent(event);
+
+        expect((await repo.getReviewEvents('canon-2')).length, 1);
+
+        await repo.deleteStudy(study.id);
+
+        expect(
+          await repo.getReviewEvents('canon-2'),
+          isEmpty,
+          reason: 'the event was stored under the canonical id and must be found there',
+        );
+        expect(await repo.getReviewState('canon-2'), isNull);
+      } finally {
+        await db.close();
+      }
+    });
+
+    test('deleteChapter keeps canonical state another chapter still owns', () async {
+      final db = await openAppDatabase(databaseFactoryFfi, dbPath);
+      final repo = SqliteStudyRepository(db);
+
+      try {
+        final now = DateTime.utc(2026, 9, 16, 12);
+        final study = Study(id: 's-shared', title: 'S', createdAt: now, updatedAt: now);
+        final chapterA = Chapter(id: 'ch-a', studyId: study.id, sourceOrder: 0);
+        final chapterB = Chapter(id: 'ch-b', studyId: study.id, sourceOrder: 1);
+
+        // The same position reached twice: a transposition inside one study.
+        const decisionA = RepertoireDecision(
+          id: 'occ-a',
+          studyId: 's-shared',
+          chapterId: 'ch-a',
+          nodeId: 'n1',
+          expectedMoves: [],
+          canonicalStateId: 'canon-shared',
+        );
+        const decisionB = RepertoireDecision(
+          id: 'occ-b',
+          studyId: 's-shared',
+          chapterId: 'ch-b',
+          nodeId: 'n9',
+          expectedMoves: [],
+          canonicalStateId: 'canon-shared',
+        );
+        const state = ReviewState(decisionId: 'canon-shared', repetitionCount: 5);
+
+        await repo.saveStudy(study);
+        await repo.saveChapter(chapterA);
+        await repo.saveChapter(chapterB);
+        await repo.saveDecision(decisionA);
+        await repo.saveDecision(decisionB);
+        await repo.saveReviewState(state);
+
+        await repo.deleteChapter(chapterA.id);
+
+        expect(
+          await repo.getReviewState('canon-shared'),
+          isNotNull,
+          reason: 'chapter B still asks this question, so its memory must survive',
+        );
+        expect(await repo.getDecision('occ-b'), isNotNull);
       } finally {
         await db.close();
       }
@@ -1011,6 +1164,109 @@ void main() {
       expect(states.first.difficulty, equals(7.2));
 
       await upgradedDb.close();
+    });
+
+    test('database migration v13 to v14 rekeys and backfills canonical review state', () async {
+      // A database written before the canonical key change: decisions carry old-format
+      // canonicalStateId values, and all of the history is in the legacy table only.
+      final v13Db = await databaseFactoryFfi.openDatabase(
+        dbPath,
+        options: OpenDatabaseOptions(
+          version: 13,
+          onCreate: (db, version) async {
+            final batch = db.batch();
+            createSrsTables(batch);
+            await batch.commit();
+
+            const fenKey = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
+            await db.insert(kTableSrsStudy, {
+              'id': 'st-1',
+              'title': 'Old',
+              'createdAt': '2026-01-01T00:00:00.000Z',
+              'updatedAt': '2026-01-01T00:00:00.000Z',
+              'isActive': 1,
+            });
+            await db.insert(kTableSrsChapter, {
+              'id': 'ch-1',
+              'studyId': 'st-1',
+              'sourceOrder': 0,
+              'startingFen': fenKey,
+              'createdAt': '2026-01-01T00:00:00.000Z',
+              'treeJson': jsonEncode(
+                repertoireNodeToJson(
+                  const RepertoireNode(id: 'node-1', fen: fenKey, fenKey: fenKey),
+                ),
+              ),
+            });
+
+            // One decision offering two moves, so the old key (first child only) and the new
+            // key (the complete answer set) genuinely differ.
+            const oldCanonical = '1111111111111111111111111111111111111111';
+            await db.insert(kTableSrsDecision, {
+              'id': 'occ-1',
+              'studyId': 'st-1',
+              'chapterId': 'ch-1',
+              'nodeId': 'node-1',
+              'expectedMoves': encodeExpectedMoves([
+                const RepertoireMove(from: 'e2', to: 'e4', san: 'e4'),
+                const RepertoireMove(from: 'd2', to: 'd4', san: 'd4'),
+              ]),
+              'canonicalStateId': oldCanonical,
+            });
+
+            // The history exists only in the legacy table, keyed by the occurrence.
+            await db.insert(kTableSrsReviewState, {
+              'decisionId': 'occ-1',
+              'firstReviewedAt': '2026-01-02T00:00:00.000Z',
+              'lastReviewedAt': '2026-01-20T00:00:00.000Z',
+              'nextDueAt': '2026-02-20T00:00:00.000Z',
+              'repetitionCount': 8,
+              'lapseCount': 1,
+              'stability': 42.5,
+              'difficulty': 6.0,
+            });
+          },
+        ),
+      );
+      await v13Db.close();
+
+      // Opening through the real entry point has to run the upgrade.
+      final upgraded = await openAppDatabase(databaseFactoryFfi, dbPath);
+      try {
+        final decisions = await upgraded.query(kTableSrsDecision);
+        final newCanonical = decisions.single['canonicalStateId']! as String;
+        expect(
+          newCanonical,
+          isNot('1111111111111111111111111111111111111111'),
+          reason: 'the old first-child key should have been rewritten',
+        );
+        expect(
+          newCanonical,
+          canonicalKeyForPosition('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -', [
+            'e2e4',
+            'd2d4',
+          ]),
+        );
+
+        // And the legacy history followed the key across, rather than being stranded.
+        final carried = await upgraded.query(kTablePositionKnowledgeState);
+        expect(carried, hasLength(1));
+        expect(carried.single['canonicalId'], newCanonical);
+        expect(carried.single['repetitionCount'], 8);
+        expect(carried.single['stability'], 42.5);
+
+        // The legacy row is keyed by the occurrence and is left exactly where it was, so nothing
+        // was lost on the way across.
+        final legacy = await upgraded.query(
+          kTableSrsReviewState,
+          where: 'decisionId = ?',
+          whereArgs: ['occ-1'],
+        );
+        expect(legacy, hasLength(1));
+        expect(legacy.single['repetitionCount'], 8);
+      } finally {
+        await upgraded.close();
+      }
     });
   });
 }

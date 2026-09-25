@@ -300,6 +300,72 @@ void main() {
   });
 
   // ---------------------------------------------------------------------------
+  // Canonical identity collisions
+  // ---------------------------------------------------------------------------
+  group('importPgn — canonical identity', () {
+    // The root decision asks "from the start, what is White's move?". Two chapters can ask that
+    // same question with different answers, and those are different things to drill.
+    const oneAnswer = '1. e4 *';
+    const twoAnswersSameFirstMove =
+        '1. e4 (1. d4 d5) *';
+
+    test('same position with a different accepted set gets a different canonical id', () {
+      final one = importPgn(oneAnswer);
+      final two = importPgn(twoAnswersSameFirstMove);
+
+      expect(one.decisions, hasLength(1));
+      expect(two.decisions, hasLength(1));
+
+      // Both offer e4 from the same FEN, so the first move alone cannot tell them apart.
+      expect(
+        one.decisions.first.expectedMoves.map((m) => m.uci),
+        contains('e2e4'),
+      );
+      expect(
+        two.decisions.first.expectedMoves.map((m) => m.uci),
+        containsAll(['e2e4', 'd2d4']),
+      );
+      expect(
+        two.decisions.first.canonicalId,
+        isNot(equals(one.decisions.first.canonicalId)),
+        reason: 'a wider answer set is a different question and must not share SRS memory',
+      );
+    });
+
+    test('a transposition of the same position converges on one id', () {
+      // Both lines reach the position after 1.e4 e5 2.Nf3 Nc6, where Black must answer, by a
+      // different move order. That is one question asked twice, so it gets one memory item.
+      const viaE4 = '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 *';
+      const viaNf3 = '1. Nf3 Nc6 2. e4 e5 3. Bb5 a6 *';
+
+      // The shared decision is the one offering the ...Nc6 answer.
+      Iterable<String> idsOffering(String uci) sync* {
+        final result = importPgn(uci);
+        for (final d in result.decisions) {
+          if (d.expectedMoves.any((m) => m.uci == 'b8c6')) yield d.canonicalId;
+        }
+      }
+
+      expect(
+        idsOffering(viaE4).toSet(),
+        equals(idsOffering(viaNf3).toSet()),
+        reason: 'the same position must not fork by move order',
+      );
+    });
+
+    test('distinct positions never share a canonical id', () {
+      final first = importPgn('1. e4 e5 *');
+      final second = importPgn('1. d4 d5 *');
+
+      expect(
+        first.decisions.first.canonicalId,
+        isNot(equals(second.decisions.first.canonicalId)),
+        reason: 'different positions must not share SRS memory',
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // RepertoireDecision derivation
   // ---------------------------------------------------------------------------
   group('importPgn — decision derivation', () {

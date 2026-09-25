@@ -11,6 +11,7 @@ import 'package:chess_srs/src/domain/repertoire_decision.dart';
 import 'package:chess_srs/src/domain/repertoire_move.dart';
 import 'package:chess_srs/src/domain/repertoire_node.dart';
 import 'package:chess_srs/src/domain/study.dart';
+import 'package:chess_srs/src/model/common/chess.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -154,12 +155,9 @@ class ImportResult {
 /// Derives a 4-field FEN position key from a full 6-field FEN.
 ///
 /// The key is: `<placement> <turn> <castling> <ep>`
-/// (QUALITY.md §2.3: Position Identity Integrity).
-String fenKey(String fullFen) {
-  final parts = fullFen.split(' ');
-  if (parts.length < 4) return fullFen; // malformed — return as-is
-  return '${parts[0]} ${parts[1]} ${parts[2]} ${parts[3]}';
-}
+/// (QUALITY.md §2.3: Position Identity Integrity). The contract itself lives with the chess
+/// primitives in [positionIdentity]; this stays as the name the importer has always used.
+String fenKey(String fullFen) => positionIdentity(fullFen);
 
 /// Converts a dartchess [NormalMove] and [Position] into a domain [RepertoireMove].
 RepertoireMove normalmoveToRepertoireMove(NormalMove move, Position position) {
@@ -545,8 +543,13 @@ void _deriveDecisions(
     final isRepertoireSide = repertoireSide == null || nodeSideToMove == repertoireSide;
 
     if (isRepertoireSide) {
-      final primaryMove = node.childMoves.firstOrNull;
-      final cKey = primaryMove != null ? canonicalKey(node.fenKey, primaryMove.uci) : null;
+      // A decision is identified by the position *and* every move it accepts, not by one
+      // representative child: two positions sharing a FEN and a first move but offering
+      // different continuations are different questions and must not share SRS memory.
+      final cKey = canonicalKeyForPosition(
+        node.fenKey,
+        node.childMoves.map((move) => move.uci),
+      );
       out.add(
         RepertoireDecision.create(
           studyId: studyId,
