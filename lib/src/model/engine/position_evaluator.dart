@@ -162,6 +162,19 @@ class PositionEvaluator extends Notifier<EngineEvaluationState> {
   /// underneath is shared, and an offline game's opponent may be thinking on it.
   Search? _currentSearch;
 
+  /// The `info` subscription for [_currentSearch], held so it can be cancelled.
+  ///
+  /// A search keeps reporting after it has been superseded or stopped, right up to its own
+  /// `bestmove`. Without the handle, that reporting stays subscribed for as long as the engine
+  /// takes to finish — work nobody is waiting for any more.
+  StreamSubscription<UciInfo>? _searchInfoSubscription;
+
+  /// The [_generation] that owns the in-flight engine acquisition, or null when none is running.
+  ///
+  /// Ownership is tracked separately from [_resolvingSpec] so that a superseded acquisition knows
+  /// the flag is no longer its to clear.
+  int? _resolvingSpecGeneration;
+
   /// The evaluation being accumulated from that search's `info` lines.
   LocalEval? _currentEval;
   int _expectedPvs = 1;
@@ -240,6 +253,8 @@ class PositionEvaluator extends Notifier<EngineEvaluationState> {
   /// reporting until its `bestmove`, and that last word on the position is worth having.
   void stop() {
     _currentSearch?.stop();
+    _currentSearch = null;
+    _cancelSearchSubscription();
     _setEvalWork(null);
   }
 
@@ -257,11 +272,23 @@ class PositionEvaluator extends Notifier<EngineEvaluationState> {
     }
     _logger.info('Pausing the engine');
     _paused = true;
+    // Retiring the generation is what makes a release final: an engine acquisition that is still
+    // awaiting its spec resolution checks this before attaching, so it cannot bring an engine back
+    // after the user turned the engine off. Anything already reporting is rejected for the same
+    // reason.
+    _generation++;
     _currentSearch?.stop();
     _currentSearch = null;
+    _cancelSearchSubscription();
     _cancelEvalThrottle();
     _currentEval = null;
     _accumulatingFor = null;
+    // The acquisition in flight belonged to the generation just retired, so the flag is free for
+    // whoever asks next. Its own completion will find it is no longer the owner and leave it be.
+    if (_resolvingSpecGeneration != null && _resolvingSpecGeneration != _generation) {
+      _resolvingSpec = false;
+      _resolvingSpecGeneration = null;
+    }
 
     _pauseTimer?.cancel();
     _pauseTimer = Timer(kEnginePauseDelay, () {
@@ -329,6 +356,7 @@ class PositionEvaluator extends Notifier<EngineEvaluationState> {
 
     final generation = _generation;
     _resolvingSpec = true;
+    _resolvingSpecGeneration = generation;
     _setEngine(const AsyncLoading());
 
     try {
@@ -339,7 +367,13 @@ class PositionEvaluator extends Notifier<EngineEvaluationState> {
       _engineFlavor = flavor;
       _watchEngine(spec);
     } finally {
-      if (generation == _generation) _resolvingSpec = false;
+      // Only the acquisition that claimed the flag clears it. A release, or a newer request, may
+      // have taken ownership in the meantime, and clearing it then would let a third request start
+      // a second acquisition for an engine that is already being chosen.
+      if (_resolvingSpecGeneration == generation) {
+        _resolvingSpec = false;
+        _resolvingSpecGeneration = null;
+      }
     }
   }
 
@@ -411,6 +445,7 @@ class PositionEvaluator extends Notifier<EngineEvaluationState> {
     // gone — but it is shared, so only this evaluator's own search is stopped.
     _currentSearch?.stop();
     _currentSearch = null;
+    _cancelSearchSubscription();
     _detachEngine();
     _engineSubscription?.close();
     _engineSubscription = null;
@@ -418,6 +453,7 @@ class PositionEvaluator extends Notifier<EngineEvaluationState> {
     _spec = null;
     _engineFlavor = null;
     _resolvingSpec = false;
+    _resolvingSpecGeneration = null;
     if (invalidate && spec != null) ref.invalidate(engineProvider(spec));
   }
 
@@ -479,11 +515,55 @@ class PositionEvaluator extends Notifier<EngineEvaluationState> {
     final engine = _engine;
     if (engine == null) return;
 
+    // Whatever was reporting before is superseded now. It keeps running on the shared engine, but
+    // nothing of it is listened to any more.
+    _cancelSearchSubscription();
+
     final search = engine.search(_searchRequestFor(work));
     _currentSearch = search;
+    // Tagged with the generation it was started under, so every callback can tell whether the work
+    // it was created for is still the work this evaluator is doing.
+    final generation = _generation;
 
-    search.infos.listen((info) => _onSearchInfo(work, search, info));
-    unawaited(search.bestMove.then((_) => _onEvalSearchDone(work, search)));
+    _searchInfoSubscription = search.infos.listen(
+      (info) {
+        if (!_isCurrentSearch(search, generation)) return;
+        _onSearchInfo(work, search, info);
+      },
+      onError: (Object error, StackTrace st) {
+        if (!_isCurrentSearch(search, generation)) return;
+        _logger.warning('Engine search failed', error, st);
+      },
+      cancelOnError: true,
+    );
+
+    unawaited(
+      search.bestMove.then(
+        (_) {
+          if (!_isCurrentSearch(search, generation)) return;
+          _onEvalSearchDone(work, search);
+        },
+        // A search that fails has no best move, and its future would otherwise carry the error
+        // out as an unhandled asynchronous one.
+        onError: (Object error, StackTrace st) {
+          if (!_isCurrentSearch(search, generation)) return;
+          _logger.warning('Engine search ended without a best move', error, st);
+        },
+      ),
+    );
+  }
+
+  /// Whether [search], started under [generation], is still the search this evaluator is following.
+  ///
+  /// All three have to hold: the engine must still be attached, the generation must not have been
+  /// retired by a release or a newer request, and the search must not have been replaced by a
+  /// subsequent one on the same shared engine.
+  bool _isCurrentSearch(Search search, int generation) =>
+      _engine != null && generation == _generation && identical(_currentSearch, search);
+
+  void _cancelSearchSubscription() {
+    _searchInfoSubscription?.cancel();
+    _searchInfoSubscription = null;
   }
 
   SearchRequest _searchRequestFor(EvalWork work) {

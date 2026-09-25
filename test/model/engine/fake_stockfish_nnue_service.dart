@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:chess_srs/src/model/engine/weights_service.dart';
@@ -51,6 +52,49 @@ class FakeStockfishNnueService implements StockfishNnueService {
   Future<void> deleteNNUEFiles() async {
     // Do nothing
   }
+}
+
+/// A fake [StockfishNnueService] whose availability check can be held open by a test.
+///
+/// `checkNNUEFile` is the await that sits between an engine request and the engine being attached,
+/// so a test that completes it by hand controls exactly when the engine gets chosen.
+class ControllableStockfishNnueService implements StockfishNnueService {
+  ControllableStockfishNnueService({this.available = true});
+
+  /// What [checkNNUEFile] will answer once it is released.
+  final bool available;
+
+  final _checkGate = Completer<bool>();
+  final _nnueDownloadProgress = ValueNotifier<double>(0.0);
+
+  /// Lets the pending [checkNNUEFile] complete with [available].
+  void releaseCheck() {
+    if (!_checkGate.isCompleted) _checkGate.complete(available);
+  }
+
+  @override
+  ValueListenable<double> get nnueDownloadProgress => _nnueDownloadProgress;
+
+  @override
+  bool get isDownloadingNNUEFile => false;
+
+  @override
+  File get nnueFile => File('/tmp/fake_net.nnue');
+
+  @override
+  Future<bool> checkNNUEFile() => _checkGate.future;
+
+  @override
+  Future<bool> hasOutdatedNNUEFiles() async => !available;
+
+  @override
+  Future<bool> hasNNUEFilesOnDisk() async => available;
+
+  @override
+  Future<bool> downloadNNUEFile({bool inBackground = true}) async => false;
+
+  @override
+  Future<void> deleteNNUEFiles() async {}
 }
 
 /// A fake [StockfishNnueService] that simulates a missing/unavailable NNUE file.

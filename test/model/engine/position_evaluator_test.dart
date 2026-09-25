@@ -592,6 +592,79 @@ void main() {
         reason: 'engine start/quit must be serialized to avoid native crashes (#2870)',
       );
     });
+
+    test('release while the engine is being chosen does not bring it back', () async {
+      final stockfish = FakeEngine();
+      fakeEngine = stockfish;
+      final nnue = ControllableStockfishNnueService();
+
+      // The full engine is the one whose acquisition waits on the NNUE check.
+      final prefsContainer = await makeContainer();
+      await setEnginePref(prefsContainer, ChessEnginePref.sfLatest);
+      prefsContainer.dispose();
+
+      final container = await makeContainer(
+        overrides: {
+          stockfishNnueServiceProvider: stockfishNnueServiceProvider.overrideWithValue(nnue),
+        },
+      );
+      final service = readEvaluator(container);
+
+      // Ask for work. Choosing the engine is parked on the NNUE availability check.
+      service.evaluate(makeWork());
+      await pumpEventQueue();
+      expect(stockfish.startCount, 0, reason: 'the engine is not attached yet');
+
+      // The user turns the engine off before the choice completes.
+      service.release();
+
+      // Now let the choice finish. The engine it was going to attach must never be started.
+      nnue.releaseCheck();
+      await pumpEventQueue();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        stockfish.startCount,
+        0,
+        reason: 'a spec resolution that finished after a release must not resurrect the engine',
+      );
+      expect(service.state.currentWork, isNull);
+    });
+
+    test('a stopped search stops reporting to subscribers', () async {
+      final stockfish = ThrottleTestEngine();
+      fakeEngine = stockfish;
+
+      final container = await makeContainer();
+      final service = readEvaluator(container);
+
+      // Collected from the stream, not from state: `state.eval` is already cleared by the
+      // release, so it cannot tell "nothing arrived" from "nothing was accepted".
+      final received = <EvalResult>[];
+      final subscription = service.evalStream.listen(received.add);
+      addTearDown(subscription.cancel);
+
+      service.evaluate(makeWork());
+      await pumpEventQueue();
+      stockfish.emitEvalEvents();
+      await pumpEventQueue();
+      expect(received, isNotEmpty, reason: 'the search reported before the release');
+
+      // The user turns the engine off. The engine underneath is kept for the grace window and can
+      // still have lines to say, but this search is over and its subscription is gone.
+      service.release();
+      final countAtRelease = received.length;
+
+      stockfish.emitEvalEvents();
+      await pumpEventQueue();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+
+      expect(
+        received.length,
+        countAtRelease,
+        reason: 'a stopped search must not keep publishing evaluations after a release',
+      );
+    });
   });
 
   group('PositionEvaluator internal state consistency', () {

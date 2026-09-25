@@ -38,6 +38,12 @@ const kRequestEvalDebounceDelay = Duration(milliseconds: 250);
 /// to get a chance to get the cloud eval first.
 const kLocalEngineAfterCloudEvalDelay = Duration(milliseconds: 600);
 
+/// How long a cloud evaluation over HTTP is waited for before giving up on it.
+///
+/// The local engine is already running by the time this is sent, so the cloud answer is an
+/// improvement rather than the result. A server that never finishes must not hold the request open.
+const kCloudEvalTimeout = Duration(seconds: 5);
+
 /// Interface for Notifiers's State that uses [EngineEvaluationMixin].
 mixin EvaluationMixinState<State extends EvaluationMixinState<State>> {
   /// Returns `true` if the engine evaluation is available (for both local and cloud).
@@ -113,6 +119,10 @@ mixin EngineEvaluationMixin<T extends EvaluationMixinState<T>> on AnyNotifier<As
 
   final _evalRequestDebounce = Debouncer(kRequestEvalDebounceDelay);
   final _localEngineAfterDelayDebounce = Debouncer(kLocalEngineAfterCloudEvalDelay);
+
+  /// Bumped on every cloud-eval request, so a response that arrives after the screen has moved on
+  /// can be told apart from one that is still wanted.
+  int _cloudEvalGeneration = 0;
 
   StreamSubscription<SocketEvent>? _socketSubscription;
 
@@ -301,6 +311,7 @@ mixin EngineEvaluationMixin<T extends EvaluationMixinState<T>> on AnyNotifier<As
     required int multiPv,
     Rule rule = Rule.chess,
   }) async {
+    final generation = _cloudEvalGeneration;
     try {
       final client = ref.read(defaultClientProvider);
       final uri = lichessUri('/api/cloud-eval', {
@@ -308,7 +319,13 @@ mixin EngineEvaluationMixin<T extends EvaluationMixinState<T>> on AnyNotifier<As
         'multiPv': multiPv.toString(),
         if (rule != Rule.chess) 'variant': Variant.fromRule(rule).name,
       });
-      final response = await client.get(uri);
+      // A cloud evaluation is a nice-to-have layered over the local engine, which is already
+      // running. A server that accepts the connection and then stalls must not hold this open
+      // indefinitely: the deadline lets the local result stand on its own.
+      final response = await client.get(uri).timeout(kCloudEvalTimeout);
+      // The screen may have asked about a different position while this was in flight. Applying it
+      // then would be answering a question nobody asked any more.
+      if (generation != _cloudEvalGeneration) return;
       if (response.statusCode == 200 && ref.mounted) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         if (data is Map<String, dynamic>) {
@@ -357,6 +374,9 @@ mixin EngineEvaluationMixin<T extends EvaluationMixinState<T>> on AnyNotifier<As
     if (!state.requireValue.isEngineAvailable(evaluationPrefs)) return;
     if (evaluationPrefs.engineSearchTime == kMaxEngineSearchTime) return;
     if (!_canCloudEval()) return;
+    // Every request retires the one before it, so a response that arrives late is recognisable as
+    // belonging to a position the screen has already left.
+    _cloudEvalGeneration++;
     final curPosition = state.requireValue.currentPosition;
     if (curPosition == null) return;
     final numEvalLines = evaluationPrefs.numEvalLines;
