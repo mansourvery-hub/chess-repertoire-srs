@@ -23,6 +23,7 @@ abstract class StudyRepository {
   // Studies
   Future<void> saveStudy(Study study);
   Future<Study?> getStudy(String id);
+
   /// The study with this fingerprint, or null if there is none.
   ///
   /// When [forSide] is given, a study is only returned if every one of its chapters was

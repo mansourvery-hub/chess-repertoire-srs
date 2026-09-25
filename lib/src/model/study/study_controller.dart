@@ -393,7 +393,10 @@ class StudyController extends AsyncNotifier<StudyState>
         // A role the build does not know is a variant this client cannot represent; applying a
         // guessed one would corrupt the tree.
         if (role == null) return;
-        final (_, added) = _root.addMoveAt(UciPath(path), DropMove(role: role, to: Square.fromName(pos)));
+        final (_, added) = _root.addMoveAt(
+          UciPath(path),
+          DropMove(role: role, to: Square.fromName(pos)),
+        );
         if (added) _refreshTreeView();
     }
   }

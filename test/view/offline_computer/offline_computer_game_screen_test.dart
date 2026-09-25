@@ -1293,7 +1293,6 @@ void main() {
       fakeEngine = LegalMoveEngine();
     });
 
-
     testWidgets('a game is untimed unless a clock is asked for', (tester) async {
       await initOfflineComputerGame(tester);
 
@@ -1319,7 +1318,6 @@ void main() {
       expect(findEngineClock(tester).timeLeft, greaterThan(time));
       expect(findPlayerClock(tester).timeLeft, lessThan(time));
     });
-
 
     testWidgets('a loaded timed game is resumed with its clock already running', (tester) async {
       // A saved game part-way through: the clock was running when the app was last in the

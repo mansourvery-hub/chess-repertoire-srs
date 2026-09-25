@@ -64,8 +64,7 @@ bool isLocalEngineOffered({
   required bool allowed,
   required bool enabled,
   required bool supported,
-}) =>
-    allowed && enabled && supported;
+}) => allowed && enabled && supported;
 
 /// The evaluator for one [EvaluationContext] — one game, study, puzzle or offline game.
 ///

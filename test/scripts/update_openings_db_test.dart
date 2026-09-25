@@ -50,11 +50,10 @@ void main() {
     return result.exitCode == 0 ? int.parse((result.stdout as String).trim()) : -1;
   }
 
-  ProcessResult runScript(String sandboxPath, Directory repo) => Process.runSync(
-    'python3',
-    ['$sandboxPath/scripts/update_openings_db.py', repo.path],
-    workingDirectory: sandboxPath,
-  );
+  ProcessResult runScript(String sandboxPath, Directory repo) => Process.runSync('python3', [
+    '$sandboxPath/scripts/update_openings_db.py',
+    repo.path,
+  ], workingDirectory: sandboxPath);
 
   setUpAll(() {
     // The script shells out to `make` to build the upstream data, and this test drives it with

@@ -294,9 +294,7 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
     // `setupClock` leaves the clock stopped. Without this the player resumes a timed game with a
     // frozen clock and thinks for free. A game with no moves yet is deliberately left alone:
     // those start their clock on the first move, as a fresh game does.
-    if (!savedGame.timeIncrement.isInfinite &&
-        game.playable &&
-        game.steps.length > 1) {
+    if (!savedGame.timeIncrement.isInfinite && game.playable && game.steps.length > 1) {
       _clock.resume(state.turn);
     }
 
@@ -568,47 +566,51 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
       // Subscribe BEFORE sending. A reply that arrives between the send and the subscription
       // existing is dropped by the broadcast stream, and the wait would then sit out its whole
       // timeout even though the server had already answered.
-      subscription = socketClient.stream.where((e) => e.topic == 'evalHit').listen((
-        event,
-      ) {
-        if (generation != _generation || gameId != state.game.id) {
-          complete(null);
-          return;
-        }
+      subscription = socketClient.stream
+          .where((e) => e.topic == 'evalHit')
+          .listen(
+            (event) {
+              if (generation != _generation || gameId != state.game.id) {
+                complete(null);
+                return;
+              }
 
-        final path = pick(event.data, 'path').asStringOrThrow();
-        if (path != uciPath.value) {
-          // A reply for a different position; ours may still be coming.
-          return;
-        }
+              final path = pick(event.data, 'path').asStringOrThrow();
+              if (path != uciPath.value) {
+                // A reply for a different position; ours may still be coming.
+                return;
+              }
 
-        try {
-          final nodes = pick(event.data, 'knodes').asIntOrThrow() * 1000;
-          final depth = pick(event.data, 'depth').asIntOrThrow();
-          final pvs = pick(event.data, 'pvs')
-              .asListOrThrow(
-                (pv) => PvData(
-                  moves: pv('moves').asStringOrThrow().split(' ').toIList(),
-                  cp: pv('cp').asIntOrNull(),
-                  mate: pv('mate').asIntOrNull(),
-                ),
-              )
-              .toIList();
+              try {
+                final nodes = pick(event.data, 'knodes').asIntOrThrow() * 1000;
+                final depth = pick(event.data, 'depth').asIntOrThrow();
+                final pvs = pick(event.data, 'pvs')
+                    .asListOrThrow(
+                      (pv) => PvData(
+                        moves: pv('moves').asStringOrThrow().split(' ').toIList(),
+                        cp: pv('cp').asIntOrNull(),
+                        mate: pv('mate').asIntOrNull(),
+                      ),
+                    )
+                    .toIList();
 
-          _logger.fine('Got a cloud eval at ply ${work.position.ply} with depth $depth');
-          complete(CloudEval(depth: depth, nodes: nodes, pvs: pvs, position: work.position));
-        } catch (e, st) {
-          _logger.fine('Discarding malformed cloud eval:', e, st);
-          complete(null);
-        }
-      }, onError: (Object e, StackTrace st) {
-        _logger.fine('Cloud eval stream error:', e, st);
-        complete(null);
-      }, onDone: () {
-        // The socket is gone, so no reply is coming. Waiting out the deadline would only delay the
-        // local engine's result, which is what actually answers the player.
-        complete(null);
-      });
+                _logger.fine('Got a cloud eval at ply ${work.position.ply} with depth $depth');
+                complete(CloudEval(depth: depth, nodes: nodes, pvs: pvs, position: work.position));
+              } catch (e, st) {
+                _logger.fine('Discarding malformed cloud eval:', e, st);
+                complete(null);
+              }
+            },
+            onError: (Object e, StackTrace st) {
+              _logger.fine('Cloud eval stream error:', e, st);
+              complete(null);
+            },
+            onDone: () {
+              // The socket is gone, so no reply is coming. Waiting out the deadline would only delay the
+              // local engine's result, which is what actually answers the player.
+              complete(null);
+            },
+          );
 
       socketClient.send('evalGet', {
         'fen': work.position.fen,
@@ -782,7 +784,10 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
         // Wait for the engine move animation to complete before computing hints to avoid stuttering.
         if (state.game.playable && (state.game.casual || state.game.practiceMode)) {
           await _waitForPlayerMoveAnimation();
-          if (ref.mounted && state.game.playable && generation == _generation && state.game.id == gameId) {
+          if (ref.mounted &&
+              state.game.playable &&
+              generation == _generation &&
+              state.game.id == gameId) {
             _analyseCurrentPosition();
           }
         }

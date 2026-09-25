@@ -65,7 +65,6 @@ void main() {
       return container;
     }
 
-
     test('refuses an import with nothing in it instead of storing an untrainable study', () async {
       final container = createContainer();
       final controller = container.read(reviewControllerProvider.notifier);
@@ -98,7 +97,6 @@ void main() {
       expect(studies.where((s) => s.title == 'Partial'), hasLength(1));
     });
 
-
     test('the same tree imported for the other side is a different repertoire', () async {
       final container = createContainer();
       final controller = container.read(reviewControllerProvider.notifier);
@@ -127,12 +125,12 @@ void main() {
         reason: 'the Black import was silently redirected to the White study',
       );
 
-      final whiteMoves = (await repo.getDecisionsByStudy(white.study.id))
-          .map((d) => d.expectedMoves.first.san)
-          .toList();
-      final blackMoves = (await repo.getDecisionsByStudy(black.study.id))
-          .map((d) => d.expectedMoves.first.san)
-          .toList();
+      final whiteMoves = (await repo.getDecisionsByStudy(
+        white.study.id,
+      )).map((d) => d.expectedMoves.first.san).toList();
+      final blackMoves = (await repo.getDecisionsByStudy(
+        black.study.id,
+      )).map((d) => d.expectedMoves.first.san).toList();
 
       expect(whiteMoves, isNotEmpty);
       expect(blackMoves, isNotEmpty);
@@ -142,7 +140,6 @@ void main() {
         reason: "the two sides must not be trained on each other's moves",
       );
     });
-
 
     test('duplicate detection still works for a PGN past the offload threshold', () async {
       final container = createContainer();
@@ -175,7 +172,6 @@ void main() {
       );
       expect(second.study.id, equals(first.study.id));
     });
-
 
     test('a duplicate import is reported as up to date, not rejected as empty', () async {
       final container = createContainer();

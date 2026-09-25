@@ -278,9 +278,7 @@ void main() {
     //
     // This test exists to keep that true. The adjustment looks like a bug to anyone reading it
     // cold, and the obvious "fix" shifts every selection in the list by one move.
-    testWidgets('tapping a move in the inline list selects that move', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('tapping a move in the inline list selects that move', (WidgetTester tester) async {
       // A line long enough to check both ends: the first move and the last.
       const pgn = '1. e4 e5 2. Nf3 Nc6';
       const moveOptions = AnalysisOptions.pgn(
@@ -307,30 +305,21 @@ void main() {
       final container = ProviderScope.containerOf(
         tester.element(find.byType(OpeningExplorerScreen)),
       );
-      int ply() =>
-          container
-              .read(analysisControllerProvider(moveOptions))
-              .requireValue
-              .currentNode
-              .position
-              .ply;
+      int ply() => container
+          .read(analysisControllerProvider(moveOptions))
+          .requireValue
+          .currentNode
+          .position
+          .ply;
 
       // The first move of the line: one node past the starting position.
       await tester.tap(find.widgetWithText(InlineMoveItem, 'e4'));
       await tester.pumpAndSettle();
-      expect(
-        ply(),
-        equals(1),
-        reason: 'the first move of the line is one node past the root',
-      );
+      expect(ply(), equals(1), reason: 'the first move of the line is one node past the root');
 
       await tester.tap(find.widgetWithText(InlineMoveItem, 'Nc6'));
       await tester.pumpAndSettle();
-      expect(
-        ply(),
-        equals(4),
-        reason: 'the last move of 1.e4 e5 2.Nf3 Nc6 is the fourth node',
-      );
+      expect(ply(), equals(4), reason: 'the last move of 1.e4 e5 2.Nf3 Nc6 is the fourth node');
     }, variant: kPlatformVariant);
   });
 }

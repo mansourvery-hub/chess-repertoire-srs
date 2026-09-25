@@ -584,10 +584,7 @@ void _deriveDecisions(
       // A decision is identified by the position *and* every move it accepts, not by one
       // representative child: two positions sharing a FEN and a first move but offering
       // different continuations are different questions and must not share SRS memory.
-      final cKey = canonicalKeyForPosition(
-        node.fenKey,
-        node.childMoves.map((move) => move.uci),
-      );
+      final cKey = canonicalKeyForPosition(node.fenKey, node.childMoves.map((move) => move.uci));
       out.add(
         RepertoireDecision.create(
           studyId: studyId,

@@ -217,7 +217,10 @@ class SqliteStudyRepository implements StudyRepository {
           // Events and canonical rows are keyed by the canonical id, which is not the
           // `srs_decision.id` these chunks hold. Both spellings are removed so a
           // legacy per-occurrence row and a current canonical row both go.
-          final bothIds = <String>{...chunk, ...canonicalRows.map((r) => r['canonicalStateId']).whereType<String>()}.toList();
+          final bothIds = <String>{
+            ...chunk,
+            ...canonicalRows.map((r) => r['canonicalStateId']).whereType<String>(),
+          }.toList();
           final bothPlaceholders = List.filled(bothIds.length, '?').join(',');
           await txn.delete(
             kTableSrsReviewEvent,

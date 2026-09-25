@@ -75,7 +75,12 @@ Future<CanonicalRekeyResult> rekeyCanonicalReviewState(DatabaseExecutor db) asyn
   }
 
   if (renames.isEmpty) {
-    return CanonicalRekeyResult(decisionsRemapped: 0, statesRemapped: 0, statesMerged: 0, skipped: skipped);
+    return CanonicalRekeyResult(
+      decisionsRemapped: 0,
+      statesRemapped: 0,
+      statesMerged: 0,
+      skipped: skipped,
+    );
   }
 
   final states = await db.query(kTablePositionKnowledgeState);
@@ -104,11 +109,7 @@ Future<CanonicalRekeyResult> rekeyCanonicalReviewState(DatabaseExecutor db) asyn
   // The primary key changes, so the moved rows are removed and rewritten rather than updated:
   // two old ids can land on the same new one, which an in-place UPDATE could not express.
   for (final oldId in renames.keys) {
-    await db.delete(
-      kTablePositionKnowledgeState,
-      where: 'canonicalId = ?',
-      whereArgs: [oldId],
-    );
+    await db.delete(kTablePositionKnowledgeState, where: 'canonicalId = ?', whereArgs: [oldId]);
   }
   for (final entry in merged.entries) {
     await db.insert(
@@ -205,7 +206,10 @@ bool _knowledgeProgress({
   double doubleOf(Map<String, Object?> row, String key) => (row[key] as num?)?.toDouble() ?? 0.0;
   String? timeOf(Map<String, Object?> row, String key) => row[key] as String?;
 
-  final byRepetitions = intOf(row, 'repetitionCount').compareTo(intOf(incumbent, 'repetitionCount'));
+  final byRepetitions = intOf(
+    row,
+    'repetitionCount',
+  ).compareTo(intOf(incumbent, 'repetitionCount'));
   if (byRepetitions != 0) return byRepetitions > 0;
 
   final lastA = timeOf(row, 'lastReviewedAt');

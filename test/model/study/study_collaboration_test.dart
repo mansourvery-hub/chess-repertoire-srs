@@ -147,12 +147,7 @@ void main() {
       final observer = await openPeer(_chapterOne);
       final before = observer.sanMoves;
 
-      observer.deliver({
-        'ch': _chapterTwo.value,
-        'orig': 'c7',
-        'dest': 'c5',
-        'path': '',
-      });
+      observer.deliver({'ch': _chapterTwo.value, 'orig': 'c7', 'dest': 'c5', 'path': ''});
 
       expect(
         observer.sanMoves,
@@ -163,12 +158,7 @@ void main() {
 
     test('the same move delivered twice is still one move', () async {
       final observer = await openPeer(_chapterOne);
-      const payload = {
-        'ch': null,
-        'orig': 'c7',
-        'dest': 'c5',
-        'path': null,
-      };
+      const payload = {'ch': null, 'orig': 'c7', 'dest': 'c5', 'path': null};
       final path = UciPath.fromId(UciCharPair.fromUci('e2e4')).value;
 
       observer.deliver({...payload, 'ch': _chapterOne.value, 'path': path});
@@ -208,12 +198,7 @@ void main() {
       // Claims a move but carries none, names a role the build does not have, and a promotion
       // with no path. None of them may throw, and none may change the tree.
       observer.deliver({'ch': _chapterOne.value, 'path': ''});
-      observer.deliver({
-        'ch': _chapterOne.value,
-        'role': 'dragon',
-        'pos': 'e4',
-        'path': '',
-      });
+      observer.deliver({'ch': _chapterOne.value, 'role': 'dragon', 'pos': 'e4', 'path': ''});
       observer.deliver({'ch': _chapterOne.value, 'toMainline': true}, topic: 'promote');
       // A payload that is not a map at all.
       observer.controller.handleSocketEvent(const SocketEvent(topic: 'anaMove', data: 'nope'));
@@ -235,8 +220,12 @@ void main() {
         overrides: {
           studyRepositoryProvider: studyRepositoryProvider.overrideWith((ref) {
             final repo = MockStudyRepository();
-            when(() => repo.getStudy(id: _studyId, chapterId: any(named: 'chapterId')))
-                .thenAnswer((invocation) async {
+            when(
+              () => repo.getStudy(
+                id: _studyId,
+                chapterId: any(named: 'chapterId'),
+              ),
+            ).thenAnswer((invocation) async {
               // The opening load asks for no particular chapter; later ones name one.
               final requested = invocation.namedArguments[#chapterId] as StudyChapterId?;
               if (requested != null) await onGet?.call(requested);
@@ -291,10 +280,7 @@ void main() {
       );
 
       hold = true;
-      await Future.wait([
-        controller.goToChapter(_chapterOne),
-        controller.goToChapter(_chapterTwo),
-      ]);
+      await Future.wait([controller.goToChapter(_chapterOne), controller.goToChapter(_chapterTwo)]);
 
       expect(
         controller.state.requireValue.study.chapter.id,

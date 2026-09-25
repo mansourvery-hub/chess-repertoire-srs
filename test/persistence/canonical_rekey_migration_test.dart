@@ -60,9 +60,7 @@ void main() {
         'startingFen': fenKey,
         'createdAt': '2026-09-16T12:00:00.000Z',
         'treeJson': jsonEncode(
-          repertoireNodeToJson(
-            RepertoireNode(id: nodeId, fen: fenKey, fenKey: fenKey),
-          ),
+          repertoireNodeToJson(RepertoireNode(id: nodeId, fen: fenKey, fenKey: fenKey)),
         ),
       });
       await db.insert(kTableSrsDecision, {
@@ -278,17 +276,13 @@ void main() {
       int repetitions = 0,
       double stability = 0,
     }) async {
-      await db.insert(
-        kTableSrsStudy,
-        {
-          'id': 'study-1',
-          'title': 'S',
-          'createdAt': '2026-09-16T12:00:00.000Z',
-          'updatedAt': '2026-09-16T12:00:00.000Z',
-          'isActive': 1,
-        },
-        conflictAlgorithm: ConflictAlgorithm.ignore,
-      );
+      await db.insert(kTableSrsStudy, {
+        'id': 'study-1',
+        'title': 'S',
+        'createdAt': '2026-09-16T12:00:00.000Z',
+        'updatedAt': '2026-09-16T12:00:00.000Z',
+        'isActive': 1,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
       await db.insert(kTableSrsDecision, {
         'id': decisionId,
         'studyId': 'study-1',

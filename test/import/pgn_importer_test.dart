@@ -310,8 +310,7 @@ void main() {
     // The root decision asks "from the start, what is White's move?". Two chapters can ask that
     // same question with different answers, and those are different things to drill.
     const oneAnswer = '1. e4 *';
-    const twoAnswersSameFirstMove =
-        '1. e4 (1. d4 d5) *';
+    const twoAnswersSameFirstMove = '1. e4 (1. d4 d5) *';
 
     test('same position with a different accepted set gets a different canonical id', () {
       final one = importPgn(oneAnswer);
@@ -321,14 +320,8 @@ void main() {
       expect(two.decisions, hasLength(1));
 
       // Both offer e4 from the same FEN, so the first move alone cannot tell them apart.
-      expect(
-        one.decisions.first.expectedMoves.map((m) => m.uci),
-        contains('e2e4'),
-      );
-      expect(
-        two.decisions.first.expectedMoves.map((m) => m.uci),
-        containsAll(['e2e4', 'd2d4']),
-      );
+      expect(one.decisions.first.expectedMoves.map((m) => m.uci), contains('e2e4'));
+      expect(two.decisions.first.expectedMoves.map((m) => m.uci), containsAll(['e2e4', 'd2d4']));
       expect(
         two.decisions.first.canonicalId,
         isNot(equals(one.decisions.first.canonicalId)),

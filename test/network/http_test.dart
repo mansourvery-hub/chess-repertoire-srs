@@ -532,10 +532,7 @@ void main() {
       // it cannot determine the size up front. The caller has said how many bytes to expect,
       // and that promise is the only completeness signal there is here.
       final client = MockClient.streaming((request, bodyStream) async {
-        return http.StreamedResponse(
-          Stream<List<int>>.fromIterable([utf8.encode('hel')]),
-          200,
-        );
+        return http.StreamedResponse(Stream<List<int>>.fromIterable([utf8.encode('hel')]), 200);
       });
 
       final result = await downloadFile(
@@ -552,10 +549,7 @@ void main() {
     test('accepts a body of exactly the expected length with no Content-Length', () async {
       final file = await targetFile();
       final client = MockClient.streaming((request, bodyStream) async {
-        return http.StreamedResponse(
-          Stream<List<int>>.fromIterable([utf8.encode('hello')]),
-          200,
-        );
+        return http.StreamedResponse(Stream<List<int>>.fromIterable([utf8.encode('hello')]), 200);
       });
 
       final result = await downloadFile(

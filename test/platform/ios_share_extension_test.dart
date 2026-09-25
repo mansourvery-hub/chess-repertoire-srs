@@ -33,10 +33,9 @@ void main() {
     }
 
     /// Every type the extension's activation rule will accept.
-    Set<String> activationRuleTypes() => RegExp('UTI-CONFORMS-TO "([^"]+)"')
-        .allMatches(extensionPlist)
-        .map((m) => m.group(1)!)
-        .toSet();
+    Set<String> activationRuleTypes() => RegExp(
+      'UTI-CONFORMS-TO "([^"]+)"',
+    ).allMatches(extensionPlist).map((m) => m.group(1)!).toSet();
 
     test('the app exports a PGN type', () {
       expect(exportedType(), isNotEmpty);
