@@ -52,6 +52,8 @@ final _random = Random();
 
 final _logger = Logger('OfflineComputerGameController');
 
+int _generation = 0;
+
 /// Ply threshold for opening phase. Below this, we check the master database
 /// to consider book moves as good regardless of engine evaluation.
 const _kOpeningPlyThreshold = 30;
@@ -251,7 +253,9 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
     String? initialFen,
     TimeIncrement timeIncrement = const TimeIncrement.infinite(),
   }) {
+    _generation++;
     _analyser.clear();
+    _stopThinking();
     // Practice mode has no clock: thinking about the feedback it gives is the point of it, and a
     // move there waits on an evaluation the player did not ask for.
     final effectiveTimeIncrement = practiceMode ? const TimeIncrement.infinite() : timeIncrement;
@@ -275,7 +279,9 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
 
   /// Load a game from storage.
   void loadGame(SavedOfflineComputerGame savedGame) {
+    _generation++;
     _analyser.clear();
+    _stopThinking();
     final game = savedGame.game;
     state = OfflineComputerGameState(game: game, stepCursor: game.steps.length - 1);
     _clock.setupClock(
@@ -283,6 +289,16 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
       whiteTimeLeft: savedGame.whiteTimeLeft,
       blackTimeLeft: savedGame.blackTimeLeft,
     );
+
+    // A loaded game was already under way when the app was last in the foreground, and
+    // `setupClock` leaves the clock stopped. Without this the player resumes a timed game with a
+    // frozen clock and thinks for free. A game with no moves yet is deliberately left alone:
+    // those start their clock on the first move, as a fresh game does.
+    if (!savedGame.timeIncrement.isInfinite &&
+        game.playable &&
+        game.steps.length > 1) {
+      _clock.resume(state.turn);
+    }
 
     if (game.playable && state.turn == game.playerSide && (game.casual || game.practiceMode)) {
       _analyseCurrentPosition();
@@ -329,7 +345,11 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
       showingSuggestedMove: null,
     );
 
-    if (state.game.steps.count((p) => p.position.board == newStep.position.board) == 3) {
+    // Compared on the full position identity, not the piece placement: the same pieces with a
+    // different side to move, castling rights or en-passant square are different positions, and
+    // treating them as one claims a repetition that never happened.
+    final identity = positionIdentity(newStep.position.fen);
+    if (state.game.steps.count((p) => positionIdentity(p.position.fen) == identity) == 3) {
       state = state.copyWith(game: state.game.copyWith(isThreefoldRepetition: true));
     } else {
       state = state.copyWith(game: state.game.copyWith(isThreefoldRepetition: false));
@@ -376,7 +396,8 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
     final plyBeforeMove = positionBefore.ply;
 
     state = state.copyWith(isEvaluatingMove: true);
-
+    final generation = _generation;
+    final gameId = state.game.id;
     final sanMove = _applyMove(move);
 
     final stepCursorAfterMove = state.stepCursor;
@@ -390,8 +411,7 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
     // Normally already in hand: the analysis has been running on this position for as long as the
     // player was thinking. It only waits when the move came faster than the search.
     final preMoveEval = await _analyser.usableEval(positionBefore, timeout: _kPreMoveEvalWait);
-
-    if (!ref.mounted) return;
+    if (!ref.mounted || generation != _generation || gameId != state.game.id) return;
 
     // Without a pre-move evaluation there is nothing to judge the move against.
     if (preMoveEval == null || preMoveEval.pvs.isEmpty) {
@@ -401,6 +421,8 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
       }
       return;
     }
+
+    if (!ref.mounted || generation != _generation || gameId != state.game.id) return;
 
     final playerSide = state.game.playerSide;
     final normalizedMoveUci = sanMove.isCastles ? normalizeUci(move.uci) : move.uci;
@@ -458,7 +480,7 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
       // tablebase lookup — asked for the position the move led to. [PracticeAnalyser.analyse]
       // takes the engine over from whatever it was searching, so no hand-off is needed here.
       _analyser.analyse(workAfter);
-      _raceTheSearch(workAfter);
+      _raceTheSearch(workAfter, generation: generation, gameId: gameId);
 
       final evalAfter = await _analyser.usableEval(
         positionAfterMove,
@@ -520,15 +542,73 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
   }
 
   Future<CloudEval?> _getCloudEval(EvalWork work, {required int numEvalLines}) async {
-    CloudEval? eval;
+    StreamSubscription<SocketEvent>? subscription;
+    // An explicit timer rather than `Future.timeout`, which leaves its timer pending after the
+    // future it guards has already completed.
+    Timer? deadline;
     try {
       final uciPath = UciPath.fromUciMoves(
         work.steps.map((s) => s.sanMove.normalizeUci(state.game.meta.variant)),
       );
 
+      // Fenced to the game that asked. A reply that arrives after the player starts or loads
+      // another game belongs to a position nobody is looking at any more.
+      final generation = _generation;
+      final gameId = state.game.id;
+
       _logger.fine(
         'Requesting cloud eval for ply ${work.position.ply} and fen ${work.position.fen}',
       );
+
+      final completer = Completer<CloudEval?>();
+      void complete(CloudEval? value) {
+        if (!completer.isCompleted) completer.complete(value);
+      }
+
+      // Subscribe BEFORE sending. A reply that arrives between the send and the subscription
+      // existing is dropped by the broadcast stream, and the wait would then sit out its whole
+      // timeout even though the server had already answered.
+      subscription = socketClient.stream.where((e) => e.topic == 'evalHit').listen((
+        event,
+      ) {
+        if (generation != _generation || gameId != state.game.id) {
+          complete(null);
+          return;
+        }
+
+        final path = pick(event.data, 'path').asStringOrThrow();
+        if (path != uciPath.value) {
+          // A reply for a different position; ours may still be coming.
+          return;
+        }
+
+        try {
+          final nodes = pick(event.data, 'knodes').asIntOrThrow() * 1000;
+          final depth = pick(event.data, 'depth').asIntOrThrow();
+          final pvs = pick(event.data, 'pvs')
+              .asListOrThrow(
+                (pv) => PvData(
+                  moves: pv('moves').asStringOrThrow().split(' ').toIList(),
+                  cp: pv('cp').asIntOrNull(),
+                  mate: pv('mate').asIntOrNull(),
+                ),
+              )
+              .toIList();
+
+          _logger.fine('Got a cloud eval at ply ${work.position.ply} with depth $depth');
+          complete(CloudEval(depth: depth, nodes: nodes, pvs: pvs, position: work.position));
+        } catch (e, st) {
+          _logger.fine('Discarding malformed cloud eval:', e, st);
+          complete(null);
+        }
+      }, onError: (Object e, StackTrace st) {
+        _logger.fine('Cloud eval stream error:', e, st);
+        complete(null);
+      }, onDone: () {
+        // The socket is gone, so no reply is coming. Waiting out the deadline would only delay the
+        // local engine's result, which is what actually answers the player.
+        complete(null);
+      });
 
       socketClient.send('evalGet', {
         'fen': work.position.fen,
@@ -536,36 +616,16 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
         if (work.position.rule != Rule.chess) 'variant': Variant.fromRule(work.position.rule).name,
         'mpv': numEvalLines,
       });
-      await for (final event
-          in socketClient.stream
-              .where((e) => e.topic == 'evalHit')
-              .timeout(const Duration(seconds: 2))) {
-        final path = pick(event.data, 'path').asStringOrThrow();
-        if (path != uciPath.value) {
-          continue;
-        }
-        final nodes = pick(event.data, 'knodes').asIntOrThrow() * 1000;
-        final depth = pick(event.data, 'depth').asIntOrThrow();
-        final pvs = pick(event.data, 'pvs')
-            .asListOrThrow(
-              (pv) => PvData(
-                moves: pv('moves').asStringOrThrow().split(' ').toIList(),
-                cp: pv('cp').asIntOrNull(),
-                mate: pv('mate').asIntOrNull(),
-              ),
-            )
-            .toIList();
 
-        _logger.fine('Got a cloud eval at ply ${work.position.ply} with depth $depth');
-
-        eval = CloudEval(depth: depth, nodes: nodes, pvs: pvs, position: work.position);
-        break;
-      }
+      deadline = Timer(const Duration(seconds: 2), () => complete(null));
+      return await completer.future;
     } catch (e, st) {
       _logger.fine('Could not get cloud eval:', e, st);
+      return null;
+    } finally {
+      deadline?.cancel();
+      await subscription?.cancel();
     }
-
-    return eval;
   }
 
   /// Creates a practice comment based on pre-move PV data and the post-move eval.
@@ -699,6 +759,8 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
     _analyser.yieldEngine();
 
     state = state.copyWith(isEngineThinking: true);
+    final generation = _generation;
+    final gameId = state.game.id;
 
     try {
       final variant = state.game.meta.variant;
@@ -714,13 +776,15 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
       );
       final move = Move.parse(uciMove);
 
-      if (state.game.playable) {
+      if (state.game.playable && generation == _generation && state.game.id == gameId) {
         _applyMove(move!);
         // After engine move, precompute hints for player's turn (in casual or practice mode)
         // Wait for the engine move animation to complete before computing hints to avoid stuttering.
         if (state.game.playable && (state.game.casual || state.game.practiceMode)) {
           await _waitForPlayerMoveAnimation();
-          if (ref.mounted && state.game.playable) _analyseCurrentPosition();
+          if (ref.mounted && state.game.playable && generation == _generation && state.game.id == gameId) {
+            _analyseCurrentPosition();
+          }
         }
       }
     } on MoveSearchCancelled {
@@ -740,7 +804,10 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
     await _waitForPlayerMoveAnimation();
     if (!ref.mounted) return;
     if (!state.game.playable || state.turn == state.game.playerSide) return;
+    final generation = _generation;
+    final gameId = state.game.id;
     await _playEngineMove();
+    if (generation != _generation || gameId != state.game.id) return;
   }
 
   Future<void> _waitForPlayerMoveAnimation() {
@@ -895,7 +962,7 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
 
   /// Asks the network for the evaluations that would beat the search: a cloud eval in the opening,
   /// a tablebase lookup in an endgame. Whatever comes back is offered to the analysis.
-  void _raceTheSearch(EvalWork work) {
+  void _raceTheSearch(EvalWork work, {int? generation, StringId? gameId}) {
     final position = work.position;
 
     // Nothing to beat: this position has already been analysed as deeply as it is going to be.
@@ -905,13 +972,23 @@ class OfflineComputerGameController extends Notifier<OfflineComputerGameState> {
 
     if (state.game.meta.variant == Variant.standard && position.ply < _kOpeningPlyThreshold) {
       _getCloudEval(work, numEvalLines: work.multiPv).then((cloudEval) {
-        if (ref.mounted && cloudEval != null) _analyser.offer(position, cloudEval);
+        if (ref.mounted &&
+            cloudEval != null &&
+            generation == _generation &&
+            gameId == state.game.id) {
+          _analyser.offer(position, cloudEval);
+        }
       });
     }
 
     if (isTablebaseRelevant(position)) {
       _fetchTablebaseEval(position).then((tablebaseEval) {
-        if (ref.mounted && tablebaseEval != null) _analyser.offer(position, tablebaseEval);
+        if (ref.mounted &&
+            tablebaseEval != null &&
+            generation == _generation &&
+            gameId == state.game.id) {
+          _analyser.offer(position, tablebaseEval);
+        }
       });
     }
   }

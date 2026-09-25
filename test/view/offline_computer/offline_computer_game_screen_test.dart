@@ -1293,6 +1293,7 @@ void main() {
       fakeEngine = LegalMoveEngine();
     });
 
+
     testWidgets('a game is untimed unless a clock is asked for', (tester) async {
       await initOfflineComputerGame(tester);
 
@@ -1317,6 +1318,68 @@ void main() {
       expect(activeClock(tester), Side.white);
       expect(findEngineClock(tester).timeLeft, greaterThan(time));
       expect(findPlayerClock(tester).timeLeft, lessThan(time));
+    });
+
+
+    testWidgets('a loaded timed game is resumed with its clock already running', (tester) async {
+      // A saved game part-way through: the clock was running when the app was last in the
+      // foreground, so coming back to it has to be running again. Otherwise the player thinks
+      // against a frozen clock.
+      final gameStorage = MockOfflineComputerGameStorage();
+      when(() => gameStorage.save(any())).thenAnswer((_) async {});
+      // Nothing to resume on first build; the saved game is installed after a move is played.
+      when(() => gameStorage.fetchGame()).thenAnswer((_) async => null);
+
+      final app = await makeTestProviderScopeApp(
+        tester,
+        home: const OfflineComputerGameScreen(),
+        overrides: {
+          offlineComputerGameStorageProvider: offlineComputerGameStorageProvider.overrideWith(
+            (_) => gameStorage,
+          ),
+        },
+      );
+      await tester.pumpWidget(app);
+      await tester.pumpAndSettle();
+
+      // Start a timed game, play a move so a clock is running, then save it.
+      await selectTimeControl(tester, 'Clock');
+      await selectSide(tester, Side.white);
+      await tester.ensureVisible(find.text('Play'));
+      await tester.tap(find.text('Play'));
+      await tester.pumpAndSettle();
+      await playMove(tester, 'e2', 'e4');
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(tester.element(find.byType(Chessboard)));
+      final saved = container.read(offlineComputerGameControllerProvider).game;
+      when(() => gameStorage.fetchGame()).thenAnswer(
+        (_) async => SavedOfflineComputerGame(
+          game: saved,
+          timeIncrement: const TimeIncrement(300, 3),
+          whiteTimeLeft: const Duration(minutes: 4),
+          blackTimeLeft: const Duration(minutes: 5),
+        ),
+      );
+
+      // Load it into a fresh controller.
+      final reloaded = container.read(offlineComputerGameControllerProvider.notifier);
+      reloaded.loadGame(
+        SavedOfflineComputerGame(
+          game: saved,
+          timeIncrement: const TimeIncrement(300, 3),
+          whiteTimeLeft: const Duration(minutes: 4),
+          blackTimeLeft: const Duration(minutes: 5),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        container.read(offlineComputerClockProvider).activeClock,
+        isNotNull,
+        reason: 'a game already under way comes back with its clock running',
+      );
     });
 
     testWidgets('the game ends when the player runs out of time', (tester) async {

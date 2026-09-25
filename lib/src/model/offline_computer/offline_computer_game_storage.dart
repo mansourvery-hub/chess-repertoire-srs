@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -67,14 +68,29 @@ class OfflineComputerGameStorage {
     }
   }
 
+  /// The tail of the save-serialization chain: resolves once the most recently started save
+  /// has finished. A save waits on this before writing, so overlapping lifecycle saves queue
+  /// behind each other instead of racing to the same path.
+  static Future<void> _saveChain = Future.value();
+
   /// Persist the offline computer game to storage. Use [fetchGame] to retrieve it later.
+  ///
+  /// Writes to a temporary file and renames it over the real one, so a reader never observes a
+  /// half-written save, and so a crash mid-write cannot destroy the previous good save.
   Future<void> save(SavedOfflineComputerGame savedGame) async {
+    final previousSave = _saveChain;
+    final thisSaveCompleter = Completer<void>();
+    _saveChain = thisSaveCompleter.future;
+    await previousSave;
     try {
       final file = await _getFile();
-      _logger.info('Saving game to ${file.path}');
-      await file.writeAsString(jsonEncode(savedGame.toJson()));
+      final tmp = File('${file.path}.tmp');
+      await tmp.writeAsString(jsonEncode(savedGame.toJson()));
+      await tmp.rename(file.path);
     } catch (e, st) {
       _logger.warning('Failed to save game:', e, st);
+    } finally {
+      thisSaveCompleter.complete();
     }
   }
 }
