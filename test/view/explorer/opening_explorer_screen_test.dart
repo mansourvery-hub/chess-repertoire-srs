@@ -12,6 +12,7 @@ import 'package:chess_srs/src/model/user/user.dart';
 import 'package:chess_srs/src/network/http.dart';
 import 'package:chess_srs/src/view/explorer/opening_explorer_screen.dart';
 import 'package:chess_srs/src/view/more/more_tab_screen.dart';
+import 'package:chess_srs/src/view/review/review_copy.dart';
 import 'package:chess_srs/src/widgets/move_list.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -254,7 +255,11 @@ void main() {
       expect(boardHasPiece(tester, Square.e4, Piece.whitePawn), isTrue);
 
       // Go back to "more" screen and open opening explorer
-      await tester.pageBack();
+      // The design replaces the platform back button with SrsSubHead's own labelled
+      // affordance, so pageBack() (which only knows the Material/Cupertino one) cannot
+      // find it. Tap the control the user actually taps.
+      await tester.tap(find.text(kSrsLibraryLabel));
+      await tester.pumpAndSettle();
       await tester.pump();
 
       await tester.tap(find.text('Opening explorer'));

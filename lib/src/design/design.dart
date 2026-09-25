@@ -14,6 +14,7 @@ export 'piece_set.dart';
 export 'primitives.dart';
 export 'review_layout.dart';
 export 'srs_board_color_scheme.dart';
+export 'sub_head.dart';
 export 'theme_bridge.dart';
 export 'toast.dart';
 export 'tokens.dart';

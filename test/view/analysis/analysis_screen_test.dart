@@ -18,6 +18,7 @@ import 'package:chess_srs/src/view/engine/engine_button.dart';
 import 'package:chess_srs/src/view/engine/engine_gauge.dart';
 import 'package:chess_srs/src/view/engine/engine_lines.dart';
 import 'package:chess_srs/src/view/more/more_tab_screen.dart';
+import 'package:chess_srs/src/view/review/review_copy.dart';
 import 'package:chess_srs/src/widgets/bottom_bar.dart';
 import 'package:chess_srs/src/widgets/move_times_chart.dart';
 import 'package:chess_srs/src/widgets/pgn.dart';
@@ -1449,7 +1450,11 @@ void main() {
       expect(boardHasPiece(tester, Square.g3, Piece.whiteKing), isFalse);
 
       // Navigate back to More tab
-      await tester.pageBack();
+      // The design replaces the platform back button with SrsSubHead's own labelled
+      // affordance, so pageBack() (which only knows the Material/Cupertino one) cannot
+      // find it. Tap the control the user actually taps.
+      await tester.tap(find.text(kSrsLibraryLabel));
+      await tester.pumpAndSettle();
       await tester.pumpAndSettle();
 
       // Verify we're back at More tab
@@ -1510,7 +1515,11 @@ void main() {
       expect(boardHasPiece(tester, Square.e4, Piece.whitePawn), isFalse);
 
       // Navigate back to More tab
-      await tester.pageBack();
+      // The design replaces the platform back button with SrsSubHead's own labelled
+      // affordance, so pageBack() (which only knows the Material/Cupertino one) cannot
+      // find it. Tap the control the user actually taps.
+      await tester.tap(find.text(kSrsLibraryLabel));
+      await tester.pumpAndSettle();
       await tester.pumpAndSettle();
 
       // Verify we're back at More tab
@@ -1555,7 +1564,11 @@ void main() {
       expect(boardHasPiece(tester, Square.f4, Piece.whitePawn), isTrue);
 
       // Navigate back to More tab
-      await tester.pageBack();
+      // The design replaces the platform back button with SrsSubHead's own labelled
+      // affordance, so pageBack() (which only knows the Material/Cupertino one) cannot
+      // find it. Tap the control the user actually taps.
+      await tester.tap(find.text(kSrsLibraryLabel));
+      await tester.pumpAndSettle();
       await tester.pumpAndSettle();
 
       // Verify we're back at More tab
