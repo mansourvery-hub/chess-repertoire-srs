@@ -144,6 +144,19 @@ class GraphAwareReviewCoordinator {
 
   final Map<String, DateTime> _lastExposedAt = {};
 
+  /// Snapshot of the transient exposure-throttle bookkeeping.
+  ///
+  /// Used to roll back side effects of a review answer whose persistence
+  /// failed, so the in-memory session stays consistent with the store.
+  Map<String, DateTime> snapshotExposureThrottle() => Map<String, DateTime>.of(_lastExposedAt);
+
+  /// Restores a snapshot previously obtained from [snapshotExposureThrottle].
+  void restoreExposureThrottle(Map<String, DateTime> snapshot) {
+    _lastExposedAt
+      ..clear()
+      ..addAll(snapshot);
+  }
+
   /// Records an active recall attempt at [node], propagating graph effects as appropriate.
   GraphAwareReviewResult recordActiveReview({
     required GraphNode node,
