@@ -509,8 +509,11 @@ class SocketClient {
       }
       if (event.version! > version! + 1) {
         if (retries > 0) {
+          // A grace window for the missing event arriving out of order on this same connection.
+          // Re-reading this event is all that window can do — the version has not moved, so a
+          // replay of the same future event can never resolve the gap on its own.
           _logger.warning(
-            'Version gap, retrying... event: ${event.version}, socket: $version, retries: $retries',
+            'Version gap, waiting for the missing event... event: ${event.version}, socket: $version, retries: $retries',
           );
           _versionGapRetryTimer?.cancel();
           _versionGapRetryTimer = Timer(
@@ -518,15 +521,21 @@ class SocketClient {
             () => _handleEvent(event, retries - 1),
           );
         } else {
+          // The missing event never arrived, so stop waiting on this connection. Reconnecting is
+          // the actual recovery: `connect` puts the last committed version in the query string,
+          // which is what makes the server replay everything after it. `version` is deliberately
+          // not advanced, so the replay starts exactly at the hole.
           onEventGapFailure?.call();
-          _logger.severe(
-            'Cannot solve event gap: version incoming ${event.version} vs current $version',
+          _logger.warning(
+            'Version gap at event ${event.version} (socket: $version); reconnecting to resynchronize.',
           );
           LichessBinding.instance.firebaseCrashlytics.recordError(
-            'Cannot solve event gap: version incoming ${event.version} vs current $version',
+            'Version gap: version incoming ${event.version} vs current $version',
             null,
             information: ['socket.route: $route', 'event.topic: ${event.topic}'],
           );
+          unawaited(_disconnect());
+          _scheduleReconnect(Duration.zero);
         }
         return;
       }
@@ -703,6 +712,20 @@ class SocketClient {
     });
   }
 
+  /// Called when the authenticated account changes, so that nothing composed under the previous
+  /// identity can be delivered under the new one.
+  ///
+  /// Both queues are dropped, not just the pending-send queue: an ackable message that is still
+  /// awaiting its acknowledgement sits in [_acks] and is periodically replayed by [_resendAcks]
+  /// over whichever connection is current. Reconnecting here opens a connection authenticated as
+  /// the *new* account, so a surviving acknowledgement would be a mutation authored by the old
+  /// account and executed as the new one.
+  @visibleForTesting
+  void onAuthChanged() {
+    _resendWhenOpen.clear();
+    _acks.clear();
+  }
+
   void _onServerAck(SocketEvent event) {
     if (event.data is! int) {
       return;
@@ -872,6 +895,10 @@ class SocketPool {
   /// opened again.
   @visibleForTesting
   void onAuthChanged() {
+    // Anything queued or awaiting acknowledgement was composed under the previous account and
+    // must not be delivered over the connection this is about to open for the new one.
+    currentClient.onAuthChanged();
+
     if (currentClient.isActive) {
       currentClient.connect();
     }

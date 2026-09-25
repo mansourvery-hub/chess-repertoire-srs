@@ -880,6 +880,105 @@ void main() {
       });
     });
 
+    test('drops queued and unacknowledged messages when the account changes', () {
+      fakeAsync((async) {
+        // A fresh channel per connection, as a real reconnect gets: a closed channel's outgoing
+        // stream is finished, so reusing one would hide whatever the new connection sends.
+        final sent = <String>[];
+        final socketClient = makeTestSocketClient(
+          fakeChannelFactory: FakeWebSocketChannelFactory((_) {
+            final channel = FakeWebSocketChannel(defaultSocketUri);
+            channel.sentMessagesExceptPing.listen((m) {
+              if (m is String) sent.add(m);
+            });
+            return channel;
+          }),
+        );
+
+        socketClient.connect();
+        async.elapse(kFakeWebSocketConnectionLag);
+        async.flushMicrotasks();
+
+        // An ackable message the server never acknowledges: it stays in _acks and is replayed by
+        // _resendAcks on every reconnect.
+        socketClient.send('move', {'u': 'e2e4'}, ackable: true);
+        // And one composed while the connection is down, queued in _resendWhenOpen.
+        socketClient.close();
+        socketClient.send('chat', {'room': 'study'});
+
+        // Past the resend cutoff, so a surviving acknowledgement is certain to be replayed.
+        async.elapse(const Duration(seconds: 5));
+
+        final sentBeforeAuthChange = sent.length;
+
+        socketClient.onAuthChanged();
+        socketClient.connect();
+        async.elapse(kFakeWebSocketConnectionLag);
+        async.flushMicrotasks();
+
+        // Long enough for another periodic resend sweep.
+        async.elapse(const Duration(seconds: 5));
+        async.flushMicrotasks();
+
+        // Only what was delivered *after* the identity change; the original send is legitimate.
+        final afterAuthChange = sent.skip(sentBeforeAuthChange);
+
+        expect(
+          afterAuthChange.where((m) => m.contains('"move"')),
+          isEmpty,
+          reason: 'an unacknowledged move from the old account must not reach the new one',
+        );
+        expect(
+          afterAuthChange.where((m) => m.contains('"chat"')),
+          isEmpty,
+          reason: 'a queued message from the old account must not reach the new one',
+        );
+
+        socketClient.close();
+        async.flushTimers();
+      });
+    });
+
+    test('an unacknowledged message is still replayed without an account change', () {
+      fakeAsync((async) {
+        final sent = <String>[];
+        final socketClient = makeTestSocketClient(
+          fakeChannelFactory: FakeWebSocketChannelFactory((_) {
+            final channel = FakeWebSocketChannel(defaultSocketUri);
+            channel.sentMessagesExceptPing.listen((m) {
+              if (m is String) sent.add(m);
+            });
+            return channel;
+          }),
+        );
+
+        socketClient.connect();
+        async.elapse(kFakeWebSocketConnectionLag);
+        async.flushMicrotasks();
+
+        socketClient.send('move', {'u': 'e2e4'}, ackable: true);
+        async.elapse(const Duration(seconds: 5));
+        async.flushMicrotasks();
+
+        socketClient.close();
+        async.elapse(kFakeWebSocketConnectionLag);
+        socketClient.connect();
+        async.elapse(kFakeWebSocketConnectionLag);
+        async.flushMicrotasks();
+
+        // Retry-until-acked is the whole point of the ack queue, so it must survive a plain
+        // reconnect. Only an identity change may discard it.
+        expect(
+          sent.where((m) => m == '{"t":"move","d":{"u":"e2e4","a":1}}'),
+          hasLength(greaterThan(1)),
+          reason: 'the message is delivered on the first connection and retried on the next',
+        );
+
+        socketClient.close();
+        async.flushTimers();
+      });
+    });
+
     test('handles batch message', () async {
       final fakeChannel = FakeWebSocketChannel(defaultSocketUri);
 
@@ -1072,6 +1171,86 @@ void main() {
       expect(onEventGapFailureCalled, 1);
 
       socketClient.close();
+    });
+  });
+
+  test('an unfilled version gap reconnects from the last committed version', () {
+    fakeAsync((async) {
+      // A fresh channel per connection, so a reconnect is observable.
+      final channels = <FakeWebSocketChannel>[];
+      final socketClient = makeTestSocketClient(
+        fakeChannelFactory: FakeWebSocketChannelFactory((uri) {
+          final channel = FakeWebSocketChannel(uri);
+          channels.add(channel);
+          return channel;
+        }),
+        version: 0,
+      );
+      socketClient.connect();
+      socketClient.stream.listen((_) {});
+
+      async.elapse(kFakeWebSocketConnectionLag);
+      expect(channels, hasLength(1));
+
+      // Events 1 and 2 land; 4 arrives with 3 missing, and 3 never does.
+      sendServerSocketMessages(defaultSocketUri, [
+        '{"t":"test","v":1, "d":"data"}',
+        '{"t":"test","v":2, "d":"data"}',
+        '{"t":"test","v":4, "d":"data"}',
+      ]);
+      async.flushMicrotasks();
+      expect(socketClient.version, 2, reason: 'the last committed version is where the hole is');
+
+      // Outlast the grace window.
+      async.elapse(const Duration(seconds: 3));
+      async.flushMicrotasks();
+
+      expect(
+        channels.length,
+        greaterThan(1),
+        reason: 'a gap that never fills must be recovered by reconnecting, not just reported',
+      );
+
+      socketClient.close();
+      async.flushTimers();
+    });
+  });
+
+  test('a reconnect after a gap asks the server to resume from the last committed version', () {
+    fakeAsync((async) {
+      final requestedUrls = <String>[];
+      final socketClient = makeTestSocketClient(
+        fakeChannelFactory: FakeWebSocketChannelFactory((uri) {
+          requestedUrls.add(uri.toString());
+          return FakeWebSocketChannel(uri);
+        }),
+        version: 0,
+      );
+      socketClient.connect();
+      socketClient.stream.listen((_) {});
+
+      async.elapse(kFakeWebSocketConnectionLag);
+
+      sendServerSocketMessages(defaultSocketUri, [
+        '{"t":"test","v":1, "d":"data"}',
+        '{"t":"test","v":4, "d":"data"}',
+      ]);
+      async.flushMicrotasks();
+      expect(socketClient.version, 1);
+
+      async.elapse(const Duration(seconds: 3));
+      async.flushMicrotasks();
+
+      expect(requestedUrls.length, greaterThan(1), reason: 'a reconnect happened');
+      // The replay has to start at the hole; a resume from the tip would skip it forever.
+      expect(
+        requestedUrls.last,
+        contains('v=1'),
+        reason: 'the server is asked to replay from the last committed version, not from the gap',
+      );
+
+      socketClient.close();
+      async.flushTimers();
     });
   });
 
