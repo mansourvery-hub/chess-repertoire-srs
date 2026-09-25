@@ -292,20 +292,130 @@ class StudyController extends AsyncNotifier<StudyState>
     super.handleSocketEvent(event);
 
     if (!state.hasValue) {
-      assert(false, 'received a game SocketEvent while StudyState is null');
+      assert(false, 'received a study SocketEvent while StudyState is null');
       return;
     }
-    switch (event.topic) {
-      case 'liking':
-        final data = (event.data as Map<String, dynamic>)['l'] as Map<String, dynamic>;
-        final likes = data['likes'] as int;
-        final bool meLiked = data['me'] as bool;
-        state = AsyncValue.data(
-          state.requireValue.copyWith(
-            study: state.requireValue.study.copyWith(liked: meLiked, likes: likes),
-          ),
-        );
+
+    if (event.topic == 'liking') {
+      _applyLiking(event);
+      return;
     }
+
+    if (!_isRemoteEditForCurrentChapter(event)) return;
+
+    switch (event.topic) {
+      case 'promote':
+        final data = _editPayload(event);
+        if (data == null) return;
+        final toMainline = data['toMainline'];
+        final path = data['path'];
+        if (toMainline is! bool || path is! String) return;
+        // `promoteAt` only reorders a variation that is not already first, so a replayed event
+        // changes nothing the second time.
+        _root.promoteAt(UciPath(path), toMainline: toMainline);
+        _refreshTreeView();
+
+      case 'deleteNode':
+        final data = _editPayload(event);
+        if (data == null) return;
+        final path = data['path'];
+        final jumpTo = data['jumpTo'];
+        if (path is! String || jumpTo is! String) return;
+        final deleted = UciPath(path);
+        // Already gone: a replayed delete must not take the view with it.
+        if (_root.nodeAtOrNull(deleted) == null) return;
+        _root.deleteAt(deleted);
+        // The view is only moved when the deletion took the node being looked at out from under
+        // it. A deletion elsewhere in the tree is a background change.
+        final current = state.requireValue.currentPath;
+        if (current == deleted || deleted.contains(current)) {
+          _setPath(UciPath(jumpTo), shouldRecomputeRootView: true);
+        } else {
+          _refreshTreeView();
+        }
+
+      case 'anaMove':
+        final data = _editPayload(event);
+        if (data == null) return;
+        final orig = data['orig'];
+        final dest = data['dest'];
+        final path = data['path'];
+        if (orig is! String || dest is! String || path is! String) return;
+        final move = NormalMove(from: Square.fromName(orig), to: Square.fromName(dest));
+        // `addMoveAt` does not add a node that is already there, so a replayed move is a no-op.
+        final (_, added) = _root.addMoveAt(UciPath(path), move);
+        if (added) _refreshTreeView();
+
+      case 'anaDrop':
+        final data = _editPayload(event);
+        if (data == null) return;
+        final roleName = data['role'];
+        final pos = data['pos'];
+        final path = data['path'];
+        if (roleName is! String || pos is! String || path is! String) return;
+        final role = Role.fromChar(roleName);
+        // A role the build does not know is a variant this client cannot represent; applying a
+        // guessed one would corrupt the tree.
+        if (role == null) return;
+        final (_, added) = _root.addMoveAt(UciPath(path), DropMove(role: role, to: Square.fromName(pos)));
+        if (added) _refreshTreeView();
+    }
+  }
+
+  /// Whether [event] is a collaboration edit addressed to the chapter on screen.
+  ///
+  /// Every outgoing edit carries the chapter id (see `_recordChange`), and this controller holds
+  /// the tree of exactly one chapter. An edit for another chapter belongs to a tree that is not
+  /// loaded here, so applying it would graft a stranger's move onto the position on screen.
+  ///
+  /// Ordering is deliberately not re-checked. The study socket is opened with a version, and
+  /// `SocketClient` discards an event it has already applied and refuses a stream that has a hole
+  /// in it, so an event that reaches this point is already the next one in order.
+  bool _isRemoteEditForCurrentChapter(SocketEvent event) {
+    const editTopics = {'promote', 'deleteNode', 'anaMove', 'anaDrop'};
+    if (!editTopics.contains(event.topic)) return false;
+    final payload = _editPayload(event);
+    if (payload == null) return false;
+    return payload['ch'] == state.requireValue.currentChapter.id.value;
+  }
+
+  /// The event body as a map, or null when it is not one.
+  ///
+  /// A frame that is not a JSON object is dropped rather than cast: the subscription is opened
+  /// with `cancelOnError`, so a throw here would silently take the study's socket down with it.
+  Map<String, dynamic>? _editPayload(SocketEvent event) {
+    final data = event.data;
+    return data is Map<String, dynamic> ? data : null;
+  }
+
+  void _applyLiking(SocketEvent event) {
+    final outer = _editPayload(event);
+    final likes = outer?['l'];
+    if (likes is! Map) return;
+    final count = likes['likes'];
+    final me = likes['me'];
+    if (count is! int || me is! bool) return;
+    state = AsyncValue.data(
+      state.requireValue.copyWith(
+        study: state.requireValue.study.copyWith(liked: me, likes: count),
+      ),
+    );
+  }
+
+  /// Rebuilds the view after the tree changed underneath it, without moving the reader.
+  ///
+  /// Someone else making a move is a background event. Only a deletion that removes the node
+  /// being looked at moves the view, and that is handled where it happens.
+  void _refreshTreeView() {
+    if (!state.hasValue) return;
+    final current = state.requireValue;
+    state = AsyncValue.data(
+      current.copyWith(
+        root: _root.view,
+        currentNode: StudyCurrentNode.fromNode(_root.nodeAt(current.currentPath)),
+        isOnMainline: _root.isOnMainline(current.currentPath),
+      ),
+    );
   }
 
   // The PGNs of some gamebook studies start with the opponent's turn, so trigger their move after a delay
