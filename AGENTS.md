@@ -61,7 +61,9 @@ Every engineering task must follow:
    test as appropriate).
 5. IMPLEMENT minimally, following Lichess Mobile conventions (CLAUDE.md).
 6. TARGETED VERIFICATION: run the specific test file.
-7. FULL GATE: ./verify  (flutter analyze + flutter test) — zero warnings.
+7. STATIC CHECK: `flutter analyze` on the files you touched.
+   The full suite is CI's job — see the note on ./verify below. Do not run
+   `./verify` as part of the inner loop.
 8. RUNTIME VALIDATION (see §4) for anything user-visible.
 9. FIX ROOT CAUSES; add permanent regression tests.
 10. UPDATE IMPLEMENTATION_PLAN.md / spec docs if boundaries changed.
@@ -98,7 +100,7 @@ Past sessions produced green `./verify` runs while the real app had runtime
 errors or looked nothing like the intended UI. Therefore, for every
 user-visible milestone:
 
-1. `./verify` passes (analyze + tests).
+1. The suite is green — from CI, or `./verify` when working offline.
 2. **Launch the real application** (Linux desktop or attached device) and
    manually exercise the affected feature.
 3. Visually inspect the UI. For UI work, screenshot/runtime inspection is
@@ -116,7 +118,19 @@ fvm flutter test
 fvm flutter run -d linux          # runtime validation
 ```
 
-`./verify` is the adapted quality gate; keep it green on every commit.
+`./verify` runs `flutter analyze` followed by `flutter test` over the whole
+suite — around 1400 tests, with no path filter. That saturates the machine
+and takes minutes, so it is a **pre-push and milestone gate, not an
+inner-loop step.**
+
+- **Per change:** `flutter analyze` on the files you touched, plus the one
+  test file covering the change. That is the loop.
+- **Per push / before declaring a milestone:** `./verify` once, or let
+  GitHub Actions do it — CI runs `flutter test` on every push and is the
+  authority on whether the suite is green.
+
+Say plainly in the commit message when a change was verified only by
+targeted tests, so nobody mistakes it for a full-suite result.
 
 ## 5. Quality gates and invariants
 
@@ -160,7 +174,16 @@ foundation already contains study-tree and game-tree prior art.
 ## 9. Cut discipline (Phase 1 and beyond)
 
 - Follow `CUT_PROPOSALS.md`; do not silently make controversial cuts.
-- One subsystem per commit; after each cut: `./verify` + launch + smoke run.
+- One subsystem per commit; after each cut: targeted tests + launch + smoke
+  run. Run the full gate once at the end of a batch, not per cut.
 - Trace dependencies before deleting: a removed feature may leave a reusable
   primitive (filter widget, avatar, sheet) that other survivors need.
 - Keep GPL notices of any removed-origin code that still shares files.
+
+## Lessons Learned
+
+- [2026-09-25, Space Bunny Free] The full suite is a pre-push gate, not a
+  per-commit one; this file used to mandate the opposite, and an agent following
+  it saturated the machine on every change. Do not restore per-commit
+  `./verify` without measuring it. Verified by: the owner reporting 100% CPU
+  and full-speed fans after repeated full-suite runs.
