@@ -1006,6 +1006,22 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
     state = AsyncData(currentState.copyWith(boardPosition: targetPos, lastMove: normalMove));
   }
 
+  /// Whether [chapters] were all imported to train [side].
+  ///
+  /// The PGN hash covers the move tree, which is identical whichever side is being trained, so a
+  /// White and a Black repertoire of the same lines share a fingerprint. They are different
+  /// questions with different SRS memory, and treating the second import as a duplicate silently
+  /// discards it — the user is switched to the study they already had and told it is up to date.
+  ///
+  /// The side is deliberately not folded into the hash itself: every stored `pgnHash` was
+  /// computed without it, and changing the fingerprint would strand all of them, turning every
+  /// re-import into a fresh duplicate.
+  ///
+  /// A mixed set is not a match, so it is re-imported. A spare copy costs the user a delete;
+  /// a wrongly-skipped import costs them the repertoire.
+  bool _chaptersMatchSide(List<Chapter> chapters, Side? side) =>
+      side == null || (chapters.isNotEmpty && chapters.every((c) => c.orientation == side));
+
   /// Imports a repertoire from PGN text and immediately loads it for review.
   ///
   /// Implements Listudy tree_hash change detection: if a study with identical
@@ -1016,11 +1032,15 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
     String? title,
     Side? repertoireSide,
   }) async {
-    final hash = computePgnHash(pgnText);
+    // Hashed before anything else, because duplicate detection decides whether an import happens
+    // at all — and computing it parses the whole file. Left synchronous, a multi-megabyte PGN
+    // blocked the UI isolate before the background-parse branch below was ever reached. The
+    // helper keeps small files on this isolate and moves large ones to a worker.
+    final hash = await computePgnHashAsync(pgnText);
     _logger.info(
       'importPgnText called (title="$title", side=$repertoireSide, hash=${hash.substring(0, 8)})',
     );
-    var existingStudy = await _repository.getStudyByPgnHash(hash);
+    var existingStudy = await _repository.getStudyByPgnHash(hash, forSide: repertoireSide);
 
     if (existingStudy == null && title != null && title.trim().isNotEmpty) {
       final allStudies = await _repository.getAllStudies();
@@ -1030,7 +1050,7 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
       if (matchByTitle != null) {
         final chapters = await _repository.getChaptersByStudy(matchByTitle.id);
         final existingHash = matchByTitle.pgnHash ?? computeRepertoireTreeHash(chapters);
-        if (existingHash == hash) {
+        if (existingHash == hash && _chaptersMatchSide(chapters, repertoireSide)) {
           existingStudy = matchByTitle;
         }
       }
@@ -1072,7 +1092,10 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
     // empty repertoire in the library that opens onto a blank board, with the only record of the
     // failure being a success message. A partial import is a different case — it has positions,
     // so it is saved and its errors travel with it.
-    if (result.decisions.isEmpty) {
+    //
+    // A duplicate is also a zero-decision result, and legitimately so: it imported nothing
+    // because the study is already there, which is the answer the caller came for.
+    if (!result.isDuplicate && result.decisions.isEmpty) {
       final reason = result.errors.isEmpty
           ? 'the PGN contained no moves for the selected side'
           : result.errors.first.message;

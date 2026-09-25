@@ -102,11 +102,19 @@ class SqliteStudyRepository implements StudyRepository {
   }
 
   @override
-  Future<Study?> getStudyByPgnHash(String pgnHash) async {
+  Future<Study?> getStudyByPgnHash(String pgnHash, {Side? forSide}) async {
+    // The side filter is part of the lookup rather than a second query afterwards: this runs on
+    // the import path, and a study that does not match must fall through to a real import rather
+    // than be fetched and then discarded. A mixed-orientation study is not a match either, so it
+    // is re-imported — a spare copy costs the user a delete, a wrongly-skipped one costs them
+    // the repertoire.
     final rows = await _db.query(
       kTableSrsStudy,
-      where: 'pgnHash = ?',
-      whereArgs: [pgnHash],
+      where: forSide == null
+          ? 'pgnHash = ?'
+          : 'pgnHash = ? AND NOT EXISTS (SELECT 1 FROM $kTableSrsChapter c '
+                'WHERE c.studyId = $kTableSrsStudy.id AND c.orientation != ?)',
+      whereArgs: forSide == null ? [pgnHash] : [pgnHash, forSide.name],
       limit: 1,
     );
     if (rows.isNotEmpty) {
@@ -126,7 +134,8 @@ class SqliteStudyRepository implements StudyRepository {
           where: 'id = ?',
           whereArgs: [study.id],
         );
-        if (computedHash == pgnHash) {
+        if (computedHash == pgnHash &&
+            (forSide == null || chapters.every((c) => c.orientation == forSide))) {
           return study.copyWith(pgnHash: computedHash);
         }
       }

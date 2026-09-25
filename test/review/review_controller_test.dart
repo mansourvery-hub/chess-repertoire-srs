@@ -98,6 +98,108 @@ void main() {
       expect(studies.where((s) => s.title == 'Partial'), hasLength(1));
     });
 
+
+    test('the same tree imported for the other side is a different repertoire', () async {
+      final container = createContainer();
+      final controller = container.read(reviewControllerProvider.notifier);
+
+      const pgn = '1. e4 e5 2. Nf3 Nc6 *';
+
+      final white = await controller.importPgnText(
+        pgnText: pgn,
+        title: 'Openings',
+        repertoireSide: Side.white,
+      );
+      final black = await controller.importPgnText(
+        pgnText: pgn,
+        title: 'Openings',
+        repertoireSide: Side.black,
+      );
+
+      expect(
+        black.isDuplicate,
+        isFalse,
+        reason: 'White and Black repertoires are different questions and different SRS memory',
+      );
+      expect(
+        black.study.id,
+        isNot(equals(white.study.id)),
+        reason: 'the Black import was silently redirected to the White study',
+      );
+
+      final whiteMoves = (await repo.getDecisionsByStudy(white.study.id))
+          .map((d) => d.expectedMoves.first.san)
+          .toList();
+      final blackMoves = (await repo.getDecisionsByStudy(black.study.id))
+          .map((d) => d.expectedMoves.first.san)
+          .toList();
+
+      expect(whiteMoves, isNotEmpty);
+      expect(blackMoves, isNotEmpty);
+      expect(
+        whiteMoves.toSet().intersection(blackMoves.toSet()),
+        isEmpty,
+        reason: "the two sides must not be trained on each other's moves",
+      );
+    });
+
+
+    test('duplicate detection still works for a PGN past the offload threshold', () async {
+      final container = createContainer();
+      final controller = container.read(reviewControllerProvider.notifier);
+
+      // Past the 8KiB threshold the hash is computed on a worker isolate. The value it returns
+      // has to be the same one the synchronous path produced, or every large re-import stops
+      // being recognised as a duplicate.
+      final filler = List.generate(1500, (i) => ';note $i').join('\n');
+      final bigPgn = '[Event "Big"]\n\n$filler\n\n1. e4 e5 2. Nf3 Nc6 *';
+
+      expect(bigPgn.length, greaterThan(8192));
+
+      final first = await controller.importPgnText(
+        pgnText: bigPgn,
+        title: 'Big',
+        repertoireSide: Side.white,
+      );
+      final second = await controller.importPgnText(
+        pgnText: bigPgn,
+        title: 'Big',
+        repertoireSide: Side.white,
+      );
+
+      expect(first.isDuplicate, isFalse);
+      expect(
+        second.isDuplicate,
+        isTrue,
+        reason: 'the worker-computed hash must match the stored one',
+      );
+      expect(second.study.id, equals(first.study.id));
+    });
+
+
+    test('a duplicate import is reported as up to date, not rejected as empty', () async {
+      final container = createContainer();
+      final controller = container.read(reviewControllerProvider.notifier);
+
+      const pgn = '1. e4 e5 *';
+      final first = await controller.importPgnText(
+        pgnText: pgn,
+        title: 'King Pawn',
+        repertoireSide: Side.white,
+      );
+      final second = await controller.importPgnText(
+        pgnText: pgn,
+        title: 'King Pawn',
+        repertoireSide: Side.white,
+      );
+
+      // A duplicate legitimately carries no chapters and no decisions — nothing was imported
+      // because the study is already there. That must not read as an import that found nothing.
+      expect(first.isDuplicate, isFalse);
+      expect(second.isDuplicate, isTrue);
+      expect(second.study.id, equals(first.study.id));
+    });
+
     test('initializes with empty repository: 0 studies, no prompt', () async {
       final container = createContainer();
       final state = await container.read(reviewControllerProvider.future);

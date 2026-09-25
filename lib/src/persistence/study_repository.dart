@@ -5,6 +5,7 @@ import 'package:chess_srs/src/db/database.dart';
 import 'package:chess_srs/src/domain/domain.dart';
 import 'package:chess_srs/src/import/pgn_importer.dart';
 import 'package:chess_srs/src/persistence/sqlite_study_repository.dart';
+import 'package:dartchess/dartchess.dart' show Side;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Provider for the application's [StudyRepository].
@@ -22,7 +23,13 @@ abstract class StudyRepository {
   // Studies
   Future<void> saveStudy(Study study);
   Future<Study?> getStudy(String id);
-  Future<Study?> getStudyByPgnHash(String pgnHash);
+  /// The study with this fingerprint, or null if there is none.
+  ///
+  /// When [forSide] is given, a study is only returned if every one of its chapters was
+  /// imported for that side. The PGN hash covers the move tree, which is identical whichever
+  /// side is being trained, so a White and a Black repertoire of the same lines share a
+  /// fingerprint while being entirely different sets of questions.
+  Future<Study?> getStudyByPgnHash(String pgnHash, {Side? forSide});
   Future<List<Study>> getAllStudies();
   Future<List<Study>> getActiveStudies();
   Future<void> updateStudyActive(String studyId, bool isActive);
