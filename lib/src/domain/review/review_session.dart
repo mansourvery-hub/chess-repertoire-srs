@@ -56,7 +56,15 @@ class ReviewSession {
       }
     }
 
-    // Index canonical keys for (fenKey, expectedMoveUci) and O(1) decision lookup maps
+    // Canonical identity is shared position knowledge: two occurrences that ask the same
+    // question (same FEN, same complete accepted set) deliberately collapse to one entry here,
+    // which is what lets a transposition inherit the memory built for the position it transposed
+    // into. Occurrence identity stays separate — [RepertoireDecision.id] and [RepertoireDecision
+    // .nodeId] still address each appearance on its own, and `_decisionsById` keeps them all.
+    //
+    // `_canonicalByFenMove` stays keyed by (FEN, single move) on purpose: the graph layer uses it
+    // for position adjacency, where propagating between two questions asked at the same board is
+    // the intent. It is not the scheduling identity — that is the canonical ID above.
     for (final d in decisions) {
       _decisionsByCanonicalId[d.canonicalId] = d;
       final node = _nodesById[d.nodeId];
@@ -188,6 +196,50 @@ class ReviewSession {
 
   /// Returns the chapter with [chapterId] if present in this session.
   Chapter? getChapter(String chapterId) => _chapters[chapterId];
+
+  // ---------------------------------------------------------------------------
+  // Transactional rollback
+  // ---------------------------------------------------------------------------
+
+  /// Captures the mutable session state so it can be restored if persisting an
+  /// answer fails (QUALITY.md §2 incremental state writes).
+  ///
+  /// The snapshot is shallow because [ReviewState], [RepertoireDecision] and
+  /// [ReviewPrompt] are immutable; only the containers holding them are copied.
+  ReviewSessionCheckpoint checkpoint() {
+    return ReviewSessionCheckpoint._(
+      reviewStates: Map<String, ReviewState>.of(_reviewStates),
+      dueQueue: List<RepertoireDecision>.of(_dueQueue),
+      unbufferedQueue: List<RepertoireDecision>.of(_unbufferedQueue),
+      completedDecisionIds: Set<String>.of(_completedDecisionIds),
+      currentPrompt: _currentPrompt,
+      completedCount: _completedCount,
+      exposureThrottle: _coordinator.snapshotExposureThrottle(),
+    );
+  }
+
+  /// Restores a [checkpoint] captured by [checkpoint], undoing any in-memory
+  /// mutation performed since it was taken.
+  ///
+  /// Does not restore [_random] state: the scheduler's random selection only
+  /// affects future queue ordering, never persisted knowledge state.
+  void restoreCheckpoint(ReviewSessionCheckpoint checkpoint) {
+    _reviewStates
+      ..clear()
+      ..addAll(checkpoint.reviewStates);
+    _dueQueue
+      ..clear()
+      ..addAll(checkpoint.dueQueue);
+    _unbufferedQueue
+      ..clear()
+      ..addAll(checkpoint.unbufferedQueue);
+    _completedDecisionIds
+      ..clear()
+      ..addAll(checkpoint.completedDecisionIds);
+    _currentPrompt = checkpoint.currentPrompt;
+    _completedCount = checkpoint.completedCount;
+    _coordinator.restoreExposureThrottle(checkpoint.exposureThrottle);
+  }
 
   // ---------------------------------------------------------------------------
   // Session Actions
@@ -355,6 +407,10 @@ class ReviewSession {
         ReviewState.initial(decisionId: prompt.decision.id);
 
     if (expectedMatch != null) {
+      // The position counts toward the day's reviews whether it was answered right first time or
+      // only after a lapse. Counting it here is what stops a run of retries from exceeding the
+      // daily quota.
+      _completedDecisionIds.add(prompt.decision.canonicalId);
       return _continueWithCorrectMove(
         prompt: prompt,
         expectedMatch: expectedMatch,
@@ -765,4 +821,29 @@ class _SessionReviewStateRepository implements ReviewStateRepository {
   @override
   String? canonicalIdFor(String fen4, String expectedMoveUci) =>
       _session._canonicalByFenMove['$fen4|$expectedMoveUci'];
+}
+
+/// An opaque snapshot of the mutable state of a [ReviewSession].
+///
+/// Produced by [ReviewSession.checkpoint] and consumed by
+/// [ReviewSession.restoreCheckpoint] to undo an in-memory answer when its
+/// persistence step fails.
+class ReviewSessionCheckpoint {
+  ReviewSessionCheckpoint._({
+    required this.reviewStates,
+    required this.dueQueue,
+    required this.unbufferedQueue,
+    required this.completedDecisionIds,
+    required this.currentPrompt,
+    required this.completedCount,
+    required this.exposureThrottle,
+  });
+
+  final Map<String, ReviewState> reviewStates;
+  final List<RepertoireDecision> dueQueue;
+  final List<RepertoireDecision> unbufferedQueue;
+  final Set<String> completedDecisionIds;
+  final ReviewPrompt? currentPrompt;
+  final int completedCount;
+  final Map<String, DateTime> exposureThrottle;
 }

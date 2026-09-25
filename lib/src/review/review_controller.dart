@@ -281,6 +281,26 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
     return await _loadState(const ReviewScope.all());
   }
 
+  /// Derives the remaining allowance from a count of positions already reviewed today.
+  int? _remainingQuotaFor(ReviewMode mode, int reviewedCount) {
+    final maxDailyReviews = ref.read(studyPreferencesProvider).maxDailyReviews;
+    if (mode != ReviewMode.srs || maxDailyReviews <= 0) return null;
+    return (maxDailyReviews - reviewedCount).clamp(0, maxDailyReviews);
+  }
+
+  /// Reads the day's usage and derives what is left of the allowance.
+  ///
+  /// Read from the repository rather than carried in state, so a session started part-way through
+  /// the day — after toggling a study, or deleting one — is still capped by what has actually been
+  /// reviewed. A refresh that skipped this would hand the player a fresh, uncapped session.
+  Future<int?> _remainingDailyQuota(ReviewMode mode) async {
+    if (mode != ReviewMode.srs) return null;
+    final reviewed = await _repository.getTodayReviewedPositionsCount(
+      ref.read(clockProvider).now(),
+    );
+    return _remainingQuotaFor(mode, reviewed);
+  }
+
   Future<ReviewScreenState> _loadState(
     ReviewScope scope, [
     ReviewMode mode = ReviewMode.srs,
@@ -289,9 +309,7 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
     final now = ref.read(clockProvider).now();
     final dailyReviewedCount = await _repository.getTodayReviewedPositionsCount(now);
 
-    final remainingQuota = (mode == ReviewMode.srs && maxDailyReviews > 0)
-        ? (maxDailyReviews - dailyReviewedCount).clamp(0, maxDailyReviews)
-        : null;
+    final remainingQuota = _remainingQuotaFor(mode, dailyReviewedCount);
 
     final studies = await _repository.getAllStudies();
     final summary = await _service.getDueSummary(
@@ -446,7 +464,11 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
         (currentState.isComplete && isActive);
 
     if (needsSessionRefresh) {
-      newSession = await _service.startSession(scope: currentState.scope, mode: currentState.mode);
+      newSession = await _service.startSession(
+        scope: currentState.scope,
+        mode: currentState.mode,
+        remainingDailyQuota: await _remainingDailyQuota(currentState.mode),
+      );
       newPrompt = newSession.currentPrompt;
       if (newPrompt != null) {
         newPosition = _parseFen(newPrompt.fen);
@@ -499,13 +521,16 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
       final currentState = state.value;
       if (currentState != null) {
         final updatedStudies = currentState.studies.where((s) => s.id != studyId).toList();
+        final remainingQuota = await _remainingDailyQuota(currentState.mode);
         final summary = await _service.getDueSummary(
           studies: updatedStudies,
           scope: currentState.scope,
+          remainingDailyQuota: remainingQuota,
         );
         final newSession = await _service.startSession(
           scope: currentState.scope,
           mode: currentState.mode,
+          remainingDailyQuota: remainingQuota,
         );
         final prompt = newSession.currentPrompt;
         state = AsyncData(
@@ -750,9 +775,12 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
       }
     }
 
-    final updatedDailyCount = isFirstAttempt
-        ? currentState.dailyReviewedCount + 1
-        : currentState.dailyReviewedCount;
+    // Counted on completion, not on a first-try success. A position answered right only after a
+    // lapse is still one position reviewed today, and the session's own quota count includes it —
+    // counting it here too is what keeps the number on screen equal to the one being enforced.
+    // This cannot double-count: a prompt answered correctly has already advanced, so it cannot
+    // complete a second time.
+    final updatedDailyCount = currentState.dailyReviewedCount + 1;
 
     state = AsyncData(
       state.value!.copyWith(
@@ -809,7 +837,7 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
     try {
       if (isRetrying) {
         // Reguess attempt after previous lapse
-        final result = _service.retryMove(from: from, to: to, promotion: promotion);
+        final result = await _service.retryMove(from: from, to: to, promotion: promotion);
         if (result.isCorrect) {
           await _handleCorrectAdvancement(
             currentState: currentState,

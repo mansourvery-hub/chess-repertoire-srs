@@ -7,6 +7,9 @@ import 'package:chess_srs/src/domain/domain.dart';
 import 'package:chess_srs/src/model/study/study_preferences.dart';
 import 'package:chess_srs/src/persistence/persistence.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
+
+final Logger _logger = Logger('ReviewService');
 
 /// Provider for the application's [Clock].
 final clockProvider = Provider<Clock>((ref) => const SystemClock());
@@ -162,6 +165,11 @@ class ReviewService {
   ///
   /// Incrementally persists the resulting [ReviewState] and [ReviewEvent]
   /// to SQLite without modifying the study or chapter trees (QUALITY.md §1.5).
+  ///
+  /// The in-memory session mutation and its persistence are transactional from
+  /// the caller's perspective: if the write fails, the session is rolled back to
+  /// its pre-answer state before the error is rethrown, so memory never gets
+  /// ahead of the persisted store.
   Future<ReviewStepResult> submitMove({
     required String from,
     required String to,
@@ -173,6 +181,7 @@ class ReviewService {
     }
 
     final currentDecision = session.currentPrompt?.decision;
+    final checkpoint = session.checkpoint();
     final result = session.submitMove(from: from, to: to, promotion: promotion);
 
     // Incremental persistence to canonical knowledge state and review event (SRS mode only)
@@ -207,20 +216,68 @@ class ReviewService {
         );
       }
 
-      await repository.saveAnswerBatch(knowledgeStates: allKStates, event: result.event);
+      try {
+        await repository.saveAnswerBatch(knowledgeStates: allKStates, event: result.event);
+      } catch (e, st) {
+        // Persistence is atomic (single DB transaction). If it fails, undo the
+        // in-memory answer so the session and the store remain consistent, then
+        // let the caller surface the failure.
+        session.restoreCheckpoint(checkpoint);
+        _logger.warning('Failed to persist review answer; session rolled back', e, st);
+        rethrow;
+      }
     }
 
     return result;
   }
 
   /// Retries a move attempt on the current prompt after an incorrect answer.
-  ReviewStepResult retryMove({required String from, required String to, String? promotion}) {
+  ///
+  /// The retry records no answer of its own — the lapse was already persisted by the attempt it
+  /// follows — but walking the continuation updates the exposure state of the later decisions it
+  /// passes through. Those updates are persisted here; left only in memory they would be lost on
+  /// restart, and the next session would plan as though the continuation had never been walked.
+  ///
+  /// Transactional in the same way as [submitMove]: a failed write rolls the session back rather
+  /// than leaving it ahead of the store.
+  Future<ReviewStepResult> retryMove({
+    required String from,
+    required String to,
+    String? promotion,
+  }) async {
     final session = _activeSession;
     if (session == null) {
       throw StateError('No active review session');
     }
 
-    return session.retryMove(from: from, to: to, promotion: promotion);
+    final checkpoint = session.checkpoint();
+    final result = session.retryMove(from: from, to: to, promotion: promotion);
+
+    if (session.mode != ReviewMode.practice && result.sideEffectStates.isNotEmpty) {
+      try {
+        await repository.saveAnswerBatch(
+          knowledgeStates: [
+            for (final sideState in result.sideEffectStates)
+              PositionKnowledgeState(
+                canonicalId: sideState.decisionId,
+                firstReviewedAt: sideState.firstReviewedAt,
+                lastReviewedAt: sideState.lastReviewedAt,
+                nextDueAt: sideState.nextDueAt,
+                repetitionCount: sideState.repetitionCount,
+                lapseCount: sideState.lapseCount,
+                stability: sideState.stability,
+                difficulty: sideState.difficulty,
+              ),
+          ],
+        );
+      } catch (e, st) {
+        session.restoreCheckpoint(checkpoint);
+        _logger.warning('Failed to persist retry side effects; session rolled back', e, st);
+        rethrow;
+      }
+    }
+
+    return result;
   }
 
   /// Advances after an incorrect answer has been acknowledged by the user.

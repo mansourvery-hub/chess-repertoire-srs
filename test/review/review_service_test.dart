@@ -105,6 +105,73 @@ void main() {
       }
     });
 
+    test('rolls back in-memory session when answer persistence fails', () async {
+      final db = await openAppDatabase(databaseFactoryFfi, dbPath);
+      final repo = _ToggleFailureRepository(db);
+      final service = ReviewService(repository: repo, clock: clock);
+
+      try {
+        final study = Study(id: 's1', title: 'Rollback Study', createdAt: now, updatedAt: now);
+        const root = RepertoireNode(
+          id: 'n1',
+          fen: 'startfen',
+          fenKey: 'startkey',
+          children: [
+            RepertoireNode(
+              id: 'n2',
+              fen: 'after_e4',
+              fenKey: 'after_e4_key',
+              incomingMove: RepertoireMove(from: 'e2', to: 'e4', san: 'e4'),
+            ),
+          ],
+        );
+        final chapter = Chapter(
+          id: 'c1',
+          studyId: 's1',
+          sourceOrder: 0,
+          title: 'Chapter 1',
+          root: root,
+          createdAt: now,
+        );
+        const decision = RepertoireDecision(
+          id: 'd1',
+          studyId: 's1',
+          chapterId: 'c1',
+          nodeId: 'n1',
+          expectedMoves: [RepertoireMove(from: 'e2', to: 'e4', san: 'e4')],
+        );
+
+        await repo.saveStudy(study);
+        await repo.saveChapter(chapter);
+        await repo.saveDecision(decision);
+
+        final session = await service.startSession();
+        expect(session.currentPrompt?.decision.id, 'd1');
+
+        final beforePrompt = session.currentPrompt;
+        final beforeState = session.reviewStates['d1'];
+
+        repo.failOnSaveAnswerBatch = true;
+        await expectLater(service.submitMove(from: 'e2', to: 'e4'), throwsA(isA<Exception>()));
+        repo.failOnSaveAnswerBatch = false;
+
+        // In-memory session must be exactly as it was before the failed answer.
+        expect(session.currentPrompt, same(beforePrompt));
+        expect(session.completedCount, 0);
+        expect(session.reviewStates['d1'], beforeState);
+        expect(await repo.getReviewState('d1'), isNull);
+
+        // A subsequent successful attempt persists normally.
+        final result = await service.submitMove(from: 'e2', to: 'e4');
+        expect(result.isCorrect, isTrue);
+        final persisted = await repo.getReviewState('d1');
+        expect(persisted, isNotNull);
+        expect(persisted!.repetitionCount, 1);
+      } finally {
+        await db.close();
+      }
+    });
+
     test('ReviewScope.all excludes inactive studies from dueCount and session', () async {
       final db = await openAppDatabase(databaseFactoryFfi, dbPath);
       final repo = SqliteStudyRepository(db);
@@ -610,5 +677,25 @@ void main() {
         }
       },
     );
+
   });
+}
+
+/// A [SqliteStudyRepository] whose [saveAnswerBatch] can be made to fail, to
+/// exercise the session rollback path (QUALITY.md §2).
+class _ToggleFailureRepository extends SqliteStudyRepository {
+  _ToggleFailureRepository(super.db);
+
+  bool failOnSaveAnswerBatch = false;
+
+  @override
+  Future<void> saveAnswerBatch({
+    required List<PositionKnowledgeState> knowledgeStates,
+    ReviewEvent? event,
+  }) {
+    if (failOnSaveAnswerBatch) {
+      throw Exception('simulated persistence failure');
+    }
+    return super.saveAnswerBatch(knowledgeStates: knowledgeStates, event: event);
+  }
 }

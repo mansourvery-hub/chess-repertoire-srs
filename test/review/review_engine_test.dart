@@ -996,6 +996,58 @@ void main() {
       expect(stateAfterRetry.lapseCount, 1);
     });
 
+    test('a position answered correctly only on retry still counts toward the daily quota', () {
+      final (study, chapter, decisions) = buildTestRepertoire();
+      final engine = ReviewEngine(clock: clock);
+
+      // A quota of one: the first completed position ends the session, and a retry counts as a
+      // completed position like any other.
+      final session = engine.createSession(
+        studies: [study],
+        chapters: [chapter],
+        decisions: decisions,
+        reviewStates: const {},
+        mode: ReviewMode.srs,
+        remainingDailyQuota: 1,
+      );
+
+      // Wrong first, then right: the position was reviewed, so it must be counted.
+      expect(session.submitMove(from: 'd2', to: 'd4').isCorrect, isFalse);
+      expect(session.retryMove(from: 'e2', to: 'e4').isCorrect, isTrue);
+
+      expect(
+        session.isComplete,
+        isTrue,
+        reason: 'the retried position consumed the one review the day allowed',
+      );
+    });
+
+    test('a retried position is counted once, not once per attempt', () {
+      final (study, chapter, decisions) = buildTestRepertoire();
+      final engine = ReviewEngine(clock: clock);
+
+      final session = engine.createSession(
+        studies: [study],
+        chapters: [chapter],
+        decisions: decisions,
+        reviewStates: const {},
+        mode: ReviewMode.srs,
+        remainingDailyQuota: 2,
+      );
+
+      // Wrong twice, then right: three attempts at one position.
+      expect(session.submitMove(from: 'd2', to: 'd4').isCorrect, isFalse);
+      expect(session.retryMove(from: 'a2', to: 'a3').isCorrect, isFalse);
+      expect(session.retryMove(from: 'e2', to: 'e4').isCorrect, isTrue);
+
+      // One position used of the two allowed, so review is still open.
+      expect(
+        session.isComplete,
+        isFalse,
+        reason: 'attempts are not positions; only the completed one counts',
+      );
+    });
+
     test('due-aware opponent selection counts due decisions keyed by canonicalId in subtree', () {
       final study = Study(
         id: 'study-canon-test',
