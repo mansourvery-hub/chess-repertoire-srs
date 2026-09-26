@@ -19,11 +19,14 @@ needs a decision or work this session could not do.
 
 | | Count |
 |---|---|
-| Fixed | 22 |
+| Fixed | 23 |
 | Closed without a change | 9 |
-| Out of scope by the inherited-code rule | 4 |
+| Out of scope by the inherited-code rule | 3 |
 | Open | 2 |
 | **Total** | **37** |
+
+M24 moved from *out of scope* to *fixed*, as a deliberate divergence from upstream
+rather than an oversight — the reasoning is under its entry below.
 
 Two findings are counted in *closed* but are softer than the rest: **M23**, where
 only one of three sub-claims was in scope, and **H1**, where the audit's evidence
@@ -57,6 +60,25 @@ was stale and the finding was overruled rather than fixed.
 | L3 | Truncated links throw silently | Guard the missing path segments; refuse non-web `open-web` targets |
 | — | *Not in the audit:* "rate this app" opened the upstream app | Derive store links from this app's own identity |
 | — | *Not in the audit:* accent selection was never persisted | Stored with the other general preferences |
+
+**M24 — no deadline on `DefaultClient`, fixed as a deliberate divergence.**
+`LichessClient.send` had a 15s `defaultRequestTimeout` and `DefaultClient.send` had
+none, so a server that accepted the connection and then went quiet left the request
+pending forever. `DefaultClient` now takes the same constant, referenced rather
+than restated so the two cannot drift, and overridable per client.
+
+It is in *Fixed* rather than *Out of scope* because it was changed, and that was a
+judgement call worth recording. It is inherited upstream code, unchanged, and the
+standing rule is that upstream behaviour is not this fork's to change unilaterally.
+The reasoning for doing it anyway: this fork amplifies the consequence rather than
+inheriting it as-is. It is local-first, and the opening database, NNUE weights and
+Maia book all download through this client, where upstream's traffic is mostly
+short cloud calls. A stall on a multi-megabyte download is an app sitting and
+waiting with no way out.
+
+The test demonstrates the symptom rather than describing it: against the unfixed
+client it does not fail, it hangs until the test framework's own 30-second timeout
+fires — which is what a user would have experienced.
 
 ## Closed without a change
 
@@ -143,18 +165,38 @@ book all download through the client with no deadline, where upstream's traffic 
 mostly short cloud calls. A stall there leaves the app waiting with no way out. The
 change would be one line — give `DefaultClient` the timeout its sibling has.
 
-## Open
+**M24 — no deadline on `DefaultClient`.** Fixed, as a deliberate divergence from
+upstream rather than an oversight. The reasoning is under *Fixed* below, because
+the reason matters more than the diff.
+
+## Open, each with a default taken
+
+Two items remain. Neither is a bug this audit failed to close, and neither blocks
+anything — both are decisions, and both now carry a default so that *not* deciding
+is a choice rather than a stall. The defaults are the ones this audit would ship;
+overriding either is a small change.
 
 **M19 — the local game cache has no writer.** Upstream's `_storeGame` was in a file
-the fork deleted, so the cache is never populated. Three possible resolutions
-(cache everything, cache above a size threshold, drop the offline promise) with
-different consequences, so it is a product decision rather than a bug. Likely moot
-if the game-import design is adopted.
+the fork deleted, so the cache is never populated. The three resolutions (cache
+everything, cache above a size threshold, drop the offline promise) have different
+consequences, so this is a product decision.
 
-**M20 — App Links identity.** The code half is done: the app no longer claims
-verified `lichess.org` links it cannot be verified for, since the published
-association files name the official Lichess identity. The records themselves are
-the open half and need domain control plus App Store Connect.
+**Default taken: leave it.** No writer means no behaviour change and no risk, and a
+cache nothing populates is dead weight either way. Writing one is only worth doing
+as part of the game-import feature, which supersedes it — so this closes as
+superseded if that goes ahead, and stays open on its own merits if it does not.
+Revisit with that feature, not before.
+
+**M20 — App Links identity. Closed as far as this fork can take it.** The app no
+longer claims verified `lichess.org` links it cannot be verified for, since the
+published association files name the official Lichess identity.
+
+The "publish the records" half of the original fix direction is **not available to
+this fork at all**: the association file that would name `org.chesssrs.app` is
+served from lichess.org, and only Lichess's operators can publish it. That is not a
+task waiting on anyone here — it is permanently out of reach, on any timeline. The
+remaining option, and the one taken, is for the app to stop claiming what it cannot
+prove. This becomes ordinary app-links work only if ChessSRS gets its own domain.
 
 **`firebase_options.dart` still declares `iosBundleId: 'org.lichess.mobileV2'`.**
 Found while fixing H1 and not in the audit. It is a generated file, so the fix is a
