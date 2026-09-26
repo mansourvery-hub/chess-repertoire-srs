@@ -102,7 +102,14 @@ class AppLinksService {
     _logger.info('Resolving app link: $appLinkUri');
     switch (appLinkUri.pathSegments[0]) {
       case 'study':
-        final id = appLinkUri.pathSegments[1];
+        // A link can name the route and nothing else. Reading the id unconditionally threw a
+        // RangeError, which the caller logged and dropped, so a truncated link did nothing at all
+        // with nothing shown — indistinguishable from a link that simply had not loaded yet.
+        final id = appLinkUri.pathSegments.getOrNull(1);
+        if (id == null || id.isEmpty) {
+          _logger.warning('Ignoring app link with no study id: $appLinkUri');
+          return null;
+        }
         final chapter = appLinkUri.pathSegments.getOrNull(2);
         return [
           StudyScreen.buildRoute((
@@ -137,20 +144,21 @@ class AppLinksService {
         if (appLinkUri.pathSegments.length > 2) {
           return null;
         }
+        final userName = appLinkUri.pathSegments.getOrNull(1);
+        if (userName == null || userName.isEmpty) {
+          _logger.warning('Ignoring app link with no user name: $appLinkUri');
+          return null;
+        }
         try {
           final user = await ref
               .read(userRepositoryProvider)
-              .getUser(UserId.fromUserName(appLinkUri.pathSegments[1]));
+              .getUser(UserId.fromUserName(userName));
           if (!context.mounted) return null;
 
           return [UserOrProfileScreen.buildRoute(user.lightUser)];
         } catch (e) {
           if (!context.mounted) return null;
-          showSnackBar(
-            context,
-            'Cannot find user ${appLinkUri.pathSegments[1]}',
-            type: SnackBarType.error,
-          );
+          showSnackBar(context, 'Cannot find user $userName', type: SnackBarType.error);
           return [];
         }
       case _:
@@ -163,14 +171,29 @@ class AppLinksService {
 
   /// Handles an `org.chesssrs.app://open-web?url=...` link (e.g. from the platform widget)
   /// by opening the encoded URL in the platform in-app browser.
+  ///
+  /// Only web URLs are opened. The link can be delivered by anything able to hand the app a URL,
+  /// and `launchUrl` hands any scheme it is given to the platform — a `url` naming `tel:`,
+  /// `file:` or `intent:` would have the app open it on the user's behalf. That is not what this
+  /// link is for, so anything else is refused here.
+  ///
+  /// url_launcher refuses these too, throwing rather than launching, so this is not closing a
+  /// hole that is open today. It keeps the refusal ours and deliberate, and it survives the one
+  /// change that would remove url_launcher's own guard: switching the launch mode to
+  /// `externalApplication`, whose precondition is not scheme-checked.
   void _handleOpenWebLink(Uri uri) {
     final target = uri.queryParameters['url'];
-    if (target != null) {
-      final targetUri = Uri.tryParse(target);
-      if (targetUri != null) {
-        launchUrl(targetUri, mode: LaunchMode.inAppBrowserView);
-      }
+    if (target == null) return;
+    final targetUri = Uri.tryParse(target);
+    if (targetUri == null) {
+      _logger.warning('Refusing open-web link with an unparseable url: $target');
+      return;
     }
+    if (targetUri.scheme != 'http' && targetUri.scheme != 'https') {
+      _logger.warning('Refusing open-web link for a non-web url: $targetUri');
+      return;
+    }
+    launchUrl(targetUri, mode: LaunchMode.inAppBrowserView);
   }
 
   Future<List<Route<dynamic>>?> _tryResolveGameLink(BuildContext context, Uri appLinkUri) async {

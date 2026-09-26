@@ -97,6 +97,36 @@ void main() {
       expect(find.text('test link'), findsOneWidget); // Still on the same screen
     });
 
+    testWidgets('a /study link with no id resolves to nothing rather than throwing', (
+      WidgetTester tester,
+    ) async {
+      // Reading the id unconditionally raised a RangeError. The link handler logged and dropped
+      // it, so a truncated link did nothing at all with nothing shown — indistinguishable from a
+      // link that had simply not loaded. Asserted against the resolver directly, because going
+      // through the handler hides the throw and the test would pass either way.
+      final uri = Uri.parse('https://lichess.org/study');
+      await triggerAppLink(tester, uri);
+      await tester.pumpAndSettle();
+
+      final context = tester.element(find.text('test link'));
+      final service = ProviderScope.containerOf(context).read(appLinksServiceProvider);
+      expect(await service.resolveAppLinkUri(context, uri), isNull);
+      expect(find.text('test link'), findsOneWidget, reason: 'still on the same screen');
+    });
+
+    testWidgets('a /@ link with no user name resolves to nothing rather than throwing', (
+      WidgetTester tester,
+    ) async {
+      final uri = Uri.parse('https://lichess.org/@');
+      await triggerAppLink(tester, uri);
+      await tester.pumpAndSettle();
+
+      final context = tester.element(find.text('test link'));
+      final service = ProviderScope.containerOf(context).read(appLinksServiceProvider);
+      expect(await service.resolveAppLinkUri(context, uri), isNull);
+      expect(find.text('test link'), findsOneWidget, reason: 'still on the same screen');
+    });
+
     testWidgets('resolves /study/{id} to StudyScreen route', (WidgetTester tester) async {
       final uri = Uri.parse('https://lichess.org/study/p9uY0321');
       await triggerAppLink(tester, uri);
