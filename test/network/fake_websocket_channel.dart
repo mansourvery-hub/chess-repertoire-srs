@@ -288,6 +288,72 @@ class FakeWebSocketChannel implements WebSocketChannel {
   }
 }
 
+/// A [WebSocketChannel] that answers a request inside the `add` call that carried it.
+///
+/// Every other fake here replies on a [Timer], which is a whole event-loop turn later. That is
+/// realistic, but it cannot show what happens to a reply that lands before anyone has subscribed:
+/// [SocketClient] drops events for a stream that has no listener, and against an asynchronous
+/// reply there is always time to subscribe first. Answering inline is the only way to reproduce
+/// the window that a request's subscribe-then-send ordering has to survive.
+class ImmediateResponseWebSocketChannel implements WebSocketChannel {
+  ImmediateResponseWebSocketChannel(this.replyFor);
+
+  /// The event to deliver for an outgoing [topic], or null to answer nothing.
+  final Map<String, dynamic>? Function(String topic) replyFor;
+
+  final _streamController = StreamController<dynamic>.broadcast(sync: true);
+  late final WebSocketSink _sink = _ImmediateResponseSink(this);
+
+  @override
+  Stream<dynamic> get stream => _streamController.stream;
+
+  @override
+  WebSocketSink get sink => _sink;
+
+  @override
+  Future<void> get ready => Future<void>.value();
+
+  Future<void> close() => _streamController.close();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('${invocation.memberName} is not needed by these tests');
+}
+
+class _ImmediateResponseSink implements WebSocketSink {
+  _ImmediateResponseSink(this.channel);
+
+  final ImmediateResponseWebSocketChannel channel;
+
+  @override
+  void add(dynamic data) {
+    if (data is! String) return;
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(data);
+    } on FormatException {
+      return;
+    }
+    if (decoded is! Map<String, dynamic>) return;
+    final reply = channel.replyFor(decoded['t'] as String? ?? '');
+    if (reply != null) {
+      channel._streamController.add(jsonEncode(reply));
+    }
+  }
+
+  @override
+  void addError(Object error, [StackTrace? stackTrace]) {}
+
+  @override
+  Future<dynamic> addStream(Stream<dynamic> stream) => stream.forEach(add);
+
+  @override
+  Future<void> close([int? closeCode, String? closeReason]) => channel.close();
+
+  @override
+  Future<dynamic> get done => Future<dynamic>.value();
+}
+
 class _FakeWebSocketSink implements WebSocketSink {
   _FakeWebSocketSink(this._channel, this._serverHandlers);
 

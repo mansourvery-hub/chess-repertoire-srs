@@ -15,6 +15,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:logging/logging.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../binding.dart';
 import '../test_container.dart';
@@ -59,6 +60,21 @@ SocketClient makeTestSocketClient({
   );
 
   return client;
+}
+
+/// A [WebSocketChannelFactory] that hands out one prepared channel, for the fakes that are built
+/// around a single scripted connection rather than a route.
+class _SingleChannelFactory implements WebSocketChannelFactory {
+  const _SingleChannelFactory(this.channel);
+
+  final WebSocketChannel channel;
+
+  @override
+  Future<WebSocketChannel> create(
+    String url, {
+    Map<String, dynamic>? headers,
+    Duration timeout = const Duration(seconds: 1),
+  }) async => channel;
 }
 
 void main() {
@@ -1252,6 +1268,58 @@ void main() {
       socketClient.close();
       async.flushTimers();
     });
+  });
+
+  test('a reply that arrives before anyone is listening is dropped, not buffered', () async {
+    // This is what makes request ordering load-bearing. A request that subscribes after it has
+    // sent loses the reply outright — the event is never queued for a listener that turns up
+    // afterwards — so it waits out its whole deadline for an answer the server already sent.
+    // Anything that sends a request and waits for its reply has to subscribe first; the cloud
+    // eval request in OfflineComputerGameController is the case this exists for.
+    final evalHit = {
+      't': 'evalHit',
+      'd': {
+        'knodes': 1,
+        'depth': 20,
+        'pvs': [
+          {'moves': 'e2e4', 'cp': 30},
+        ],
+      },
+    };
+
+    Future<List<SocketEvent>> requestAndCollect({required bool subscribeFirst}) async {
+      final channel = ImmediateResponseWebSocketChannel(
+        (topic) => topic == 'evalGet' ? evalHit : null,
+      );
+      final socketClient = makeTestSocketClient(fakeChannelFactory: _SingleChannelFactory(channel));
+      socketClient.connect();
+      await socketClient.firstConnection;
+
+      final seen = <SocketEvent>[];
+      if (subscribeFirst) {
+        socketClient.stream.listen(seen.add);
+        socketClient.send('evalGet', {'fen': 'x', 'path': '', 'mpv': 1});
+      } else {
+        socketClient.send('evalGet', {'fen': 'x', 'path': '', 'mpv': 1});
+        socketClient.stream.listen(seen.add);
+      }
+      await pumpEventQueue();
+      socketClient.close();
+      return seen.where((e) => e.topic == 'evalHit').toList();
+    }
+
+    expect(
+      await requestAndCollect(subscribeFirst: true),
+      hasLength(1),
+      reason: 'subscribing before the send must catch the reply',
+    );
+    expect(
+      await requestAndCollect(subscribeFirst: false),
+      isEmpty,
+      reason:
+          'the reply is lost when the subscription comes after the send, which is why the '
+          'order matters and is not merely tidy',
+    );
   });
 
   group('SocketPool', () {

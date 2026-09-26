@@ -1,9 +1,10 @@
 # Audit fixes shipped without a test that fails without them
 
-Five of the fixes in this series are shipped on reasoning rather than on a
+Four of the fixes in this series are shipped on reasoning rather than on a
 regression test. This records what each one does, what evidence exists, and what
 would close the gap. It exists so the caveat is not something a future reader has
-to rediscover from a commit message.
+to rediscover from a commit message. A fifth, M4, has since been closed and is
+recorded at the end.
 
 None of these is a suspected defect. They are unproven.
 
@@ -32,23 +33,6 @@ it as untested work waiting to be done.
 **Risk if wrong.** Low, and bounded by construction: with `_isCurrentSearch`
 gating every callback, a redundant live subscription cannot produce a wrong
 evaluation. Worst case it wastes work.
-
-## M4 — cloud evaluation subscribes before it sends
-
-**The fix.** The offline cloud evaluation subscribes to the socket before sending
-the request, so a reply landing in the gap is not dropped; the HTTP variant gets
-a 5-second deadline and a request generation.
-
-**Evidence.** None discriminating. The original defect is a race whose window is
-the gap between two adjacent statements, which a test has to win deliberately.
-
-**What would close it.** A fake socket that delivers the reply synchronously from
-`send`, so the reply provably arrives before the subscription existed in the old
-ordering. That turns the race into a determinism problem.
-
-**Risk if wrong.** Low to moderate. The timeout and generation are independently
-defensive. The subscribe-first change is the one that matters and the one that is
-unproven.
 
 ## M6 — threefold repetition compares full position identity
 
@@ -134,18 +118,38 @@ for exactly this, and it is covered where the behaviour is observable.
 | Item | Unproven part | Risk if wrong | Closable in this harness |
 |---|---|---|---|
 | M3 | subscription cancel | low — hygiene only | no — would need a production change for testability |
-| M4 | subscribe-before-send | low–moderate | yes — a socket that answers from `send` |
 | M6 | repetition identity | very low — spec-mandated | awkward, needs a scripted engine |
 | M10 | retry side effects | low — path confirmed live | yes, recipe is known |
 | M15 | isolate offloading | very low | no — unreachable under test |
 
-Two of the five (M6, M15) are better argued from the spec and from the helper's
-existing contract than from a test, and I would not spend more on them. M4 is
-closable with a socket fake that answers from `send`, which turns the race into
-determinism. M3 is not worth closing: its only observable effect is on a stream
-no test can reach, and asserting it would need a production change made purely
-for testability.
+Two of the four (M6, M15) are better argued from the spec and from the helper's
+existing contract than from a test, and I would not spend more on them. M3 is not
+worth closing: its only observable effect is on a stream no test can reach, and
+asserting it would need a production change made purely for testability.
 M10 has since been settled by instrumentation: the path is live, a correct retry
 does produce side effects, and the fix is not dead code. The recipe for its test
 is now known — every failed attempt built a session where the retry had nowhere
 to advance to — even though the test itself is still unwritten.
+
+## Closed since this file was written
+
+### M4 — cloud evaluation subscribes before it sends
+
+Now covered by a test. `ImmediateResponseWebSocketChannel` answers a request
+inside the `add` call that carried it, which no previous fake could do: they all
+reply on a `Timer`, a whole event-loop turn later, and against an asynchronous
+reply there is always time to subscribe first. The test asserts both orders and
+gets 1 reply for subscribe-then-send against 0 for send-then-subscribe.
+
+The mechanism is `SocketClient._handleEvent` checking `_streamController.hasListener`
+and dropping the event outright when nobody is listening. That check runs
+synchronously, so the last hop being asynchronous does not save the old ordering.
+This was worth measuring rather than reasoning about: the prediction that it
+could not happen was wrong.
+
+**One caveat, stated rather than buried.** The drop needs a transport that
+delivers synchronously, which the fake arranges deliberately. Whether
+`web_socket_channel` does this against a real socket is *not* established, so the
+production severity of the original ordering is still unproven. What is now proven
+is that the ordering is load-bearing under a synchronous transport, so the
+subscribe-first form has to stay.
