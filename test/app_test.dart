@@ -56,7 +56,12 @@ void main() {
     tester,
   ) async {
     int tokenTestRequests = 0;
+    // Every request the mock is asked to serve, so that a failure can report what did reach it
+    // rather than only what was expected. A developer machine and the runner can disagree about
+    // *which* request goes missing, and a bare counter cannot show that.
+    final seenRequests = <String>[];
     final mockClient = MockClient((request) {
+      seenRequests.add('${request.method} ${request.url}');
       if (request.url.path == '/api/token/test') {
         tokenTestRequests++;
         return mockResponse('''
@@ -115,7 +120,11 @@ void main() {
     );
 
     // should have made a request to test the token
-    expect(tokenTestRequests, 1);
+    expect(
+      tokenTestRequests,
+      1,
+      reason: 'the mock served ${seenRequests.length} request(s): $seenRequests',
+    );
 
     // The stale login is cleared once the 401 has been handled, which lands after the token
     // check above.
