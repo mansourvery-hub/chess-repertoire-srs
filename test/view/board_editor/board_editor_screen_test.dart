@@ -1,3 +1,4 @@
+import 'package:chess_srs/src/design/design.dart';
 import 'package:chess_srs/src/model/board_editor/board_editor_controller.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
 import 'package:chess_srs/src/model/common/chess960.dart';
@@ -270,6 +271,25 @@ void main() {
       expect(state.isCastlingPossible(.white, .king), isFalse);
       // Queenside should remain possible
       expect(state.isCastlingPossible(.white, .queen), isTrue);
+    });
+
+    testWidgets('Delete tool shows accent active state, never error red', (tester) async {
+      final app = await makeTestProviderScopeApp(tester, home: const BoardEditorScreen());
+      await tester.pumpWidget(app);
+      await tester.pumpAndSettle();
+
+      final c = SrsTheme.of(tester.element(find.byType(BoardEditorScreen)));
+      Icon deleteIcon() => tester.widget<Icon>(
+        find.descendant(
+          of: find.byKey(const Key('delete-button-white')),
+          matching: find.byType(Icon),
+        ),
+      );
+      expect(deleteIcon().color, c.ink3);
+
+      await tester.tap(find.byKey(const Key('delete-button-white')));
+      await tester.pumpAndSettle();
+      expect(deleteIcon().color, c.accent);
     });
 
     testWidgets('Possible en passant squares are calculated correctly', (tester) async {
