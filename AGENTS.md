@@ -274,3 +274,12 @@ foundation already contains study-tree and game-tree prior art.
   was file-level evidence pointing at fork-introduced code. Verified by: CI logs
   and `git diff upstream/main` on each claim before acting.
 
+- [2026-09-26, Space Bunny Free] `makeTestProviderScope` stubs
+  `preloadedDataProvider`, which is the only code that reads the stored token and
+  fires `/api/token/test` on startup. So no app-level test can ever observe the
+  token check: the request cannot be issued by anything. A test asserting it was
+  skipped for days and blamed on a CI/machine difference; it failed identically
+  locally. Before debugging a missing startup request, check whether the harness
+  replaced the provider that makes it. Verified by: counting HTTP client
+  constructions in the test — the app built one, for FCM, and none for the token
+  check. Full account in `docs/audit-disposition.md`.
