@@ -82,6 +82,12 @@ class AppLogService {
           );
         }
       } else {
+        // The level check is what keeps credentials on the device. Records carrying a request URL
+        // are logged at INFO or WARNING, below this threshold, so they reach `app_log` and the
+        // in-app log viewer but are never forwarded to Crashlytics. Raising the threshold for a
+        // URL-bearing logger, or logging a URL at SEVERE, would ship it to a third party — so
+        // redact before logging (see `redactUriForLogging`) as well, and do not remove this gate
+        // believing the redaction covers it.
         if (_loggersReportedToCrashlytics.contains(record.loggerName) &&
             record.level >= Level.SEVERE) {
           // Help debugging engine failures in production. The message carries the diagnostics, so
