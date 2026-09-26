@@ -543,7 +543,9 @@ class _BottomBar extends ConsumerWidget {
         ?engineRow,
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
-          child: Row(
+          child: Wrap(
+            spacing: 14,
+            runSpacing: 6,
             children: [
               RepeatButton(
                 onLongPress: analysisState.canGoBack

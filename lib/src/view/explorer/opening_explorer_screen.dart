@@ -312,9 +312,13 @@ class _BottomBar extends ConsumerWidget {
 
     // Diagram actions replacing the legacy bottom bar: same features,
     // plain text buttons. Database/Flip/Back/Forward all survive the move.
+    // Wrap mirrors the demo's wrapping rows: single line when it fits,
+    // two lines on narrow screens or large text rather than overflowing.
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
-      child: Row(
+      child: Wrap(
+        spacing: 14,
+        runSpacing: 6,
         children: [
           RepeatButton(
             onLongPress: canGoBack ? () => _moveBackward(ref) : null,
