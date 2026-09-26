@@ -3,16 +3,30 @@
 // visually consistent with the design tokens. This lets un-migrated
 // screens (analysis, editor) look reasonable while migrated screens
 // read tokens from SrsTheme.of(context) directly.
+import 'dart:async';
+
 import 'package:chess_srs/src/design/tokens.dart';
+import 'package:chess_srs/src/model/settings/general_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+/// The accent the design system's colours are built from.
+///
+/// A view over the stored preference rather than a value of its own. It used to be a plain
+/// notifier that always rebuilt to the default and never wrote anything down, so the settings
+/// screen let the user pick an accent and the app forgot it on the next launch.
 class SrsAccentNotifier extends Notifier<SrsAccent> {
   @override
-  SrsAccent build() => kSrsDefaultAccent;
+  SrsAccent build() => ref.watch(generalPreferencesProvider.select((prefs) => prefs.accent));
 
   SrsAccent get accent => state;
-  set accent(SrsAccent accent) => state = accent;
+
+  set accent(SrsAccent value) {
+    state = value;
+    // The preference is the value of record; this assignment is the immediate repaint, and the
+    // save is what makes it survive a restart.
+    unawaited(ref.read(generalPreferencesProvider.notifier).setAccent(value));
+  }
 }
 
 final srsAccentProvider = NotifierProvider<SrsAccentNotifier, SrsAccent>(SrsAccentNotifier.new);

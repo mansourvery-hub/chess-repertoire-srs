@@ -1,4 +1,5 @@
 import 'package:chess_srs/l10n/l10n.dart';
+import 'package:chess_srs/src/design/tokens.dart';
 import 'package:chess_srs/src/model/settings/board_preferences.dart'
     show BoardPrefs, BoardTheme, boardPreferencesProvider;
 import 'package:chess_srs/src/model/settings/preferences_storage.dart';
@@ -55,6 +56,15 @@ class GeneralPreferencesNotifier extends Notifier<GeneralPrefs>
     return save(state.copyWith(masterVolume: volume));
   }
 
+  /// The accent the design system's colours are built from.
+  ///
+  /// Held here rather than in the theme bridge, which used to keep it in memory only: the
+  /// settings screen offers a choice, so a choice that did not outlive the process was a setting
+  /// the app quietly forgot (design/docs/05-flutter-implementation.md §6).
+  Future<void> setAccent(SrsAccent accent) {
+    return save(state.copyWith(accent: accent));
+  }
+
   Future<void> toggleSystemColors() {
     final newState = state.copyWith(systemColors: !state.systemColors);
     return Future.wait([
@@ -93,6 +103,15 @@ sealed class GeneralPrefs with _$GeneralPrefs implements Serializable {
 
     /// Whether to use system colors on android 10+.
     @JsonKey(defaultValue: true) required bool systemColors,
+
+    /// The accent colour the design system is themed with.
+    ///
+    /// Optional with a default so that preferences stored before accents existed — and the
+    /// `GeneralPrefs.defaults` used as a fallback wherever JSON is unreadable — keep working
+    /// without every one of them naming this field. An accent this build does not recognise falls
+    /// back to the default rather than failing the whole decode, which is what would take the
+    /// user's other settings down with it.
+    @JsonKey(unknownEnumValue: kSrsDefaultAccent) @Default(kSrsDefaultAccent) SrsAccent accent,
 
     /// App theme seed
     @Deprecated('Use systemColors instead')
