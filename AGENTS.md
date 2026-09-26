@@ -70,6 +70,60 @@ Every engineering task must follow:
 11. ATOMIC COMMIT matching repository conventions.
 ```
 
+### Isolation: one worktree per task, `main` only by merged PR
+
+More than one agent works in this repository at a time. Each task gets its own
+git worktree and its own branch, so no two agents share a working tree. `main`
+is updated only by merging a PR that CI has passed — never pushed to directly.
+
+```bash
+# once per task, from anywhere
+git worktree add ../chesssrs-<slug> -b <type>/<area>-<slug> origin/main
+cd ../chesssrs-<slug>
+
+# required before anything will compile: generated files are gitignored, so they
+# are per-worktree. Without this every test fails with "No such file or directory"
+# on a *.freezed.dart or *.g.dart import. ~85s.
+fvm flutter pub get
+fvm dart run build_runner build --delete-conflicting-outputs
+
+# ... work, stage BY NAME, commit, push
+git push -u origin <branch>
+gh pr create -R mansourvery-hub/chess-repertoire-srs
+
+# after the PR is green and merged
+git worktree remove ../chesssrs-<slug> && git worktree prune
+```
+
+Branch names are `<type>/<area>-<slug>` — `fix/review-redirects`,
+`feat/design-tokens`. Not `agent1/…`: the branch should describe the change, so
+it reads the same whoever picks it up.
+
+Four rules, each of which exists because breaking it has cost real work:
+
+- **Never run a git command that writes outside your own worktree.** No
+  `git -C <other-path> reset`, `checkout --`, `clean`, or `stash`. A `git reset
+  --hard` or `git checkout -- .` in a *shared* tree silently destroys every
+  uncommitted change another agent has made, and there is no undo for it:
+  unstaged content is never written to the object store, so `git fsck` cannot
+  recover it. This has happened here once already.
+- **Never `git add -A`.** Stage by name. It is the same failure by another route,
+  and it survives into a commit.
+- **Never delete a worktree you did not create.** `git worktree list` first.
+- **Check `git status` before and after anything that touches the tree**, so you
+  can tell what you changed from what someone else changed.
+
+Isolation makes conflicts *visible* — two agents editing one file become a merge
+conflict instead of a silent overwrite. It does not make them *agree*. When two
+tasks touch the same subsystem, say so before starting; the worktree will not
+resolve a disagreement about what the code should do.
+
+**Recovery is faster than prevention, but it is not guaranteed.** If another
+agent's uncommitted work is at risk, it exists only in their working tree.
+Commit early and often on your own branch, and take a filesystem snapshot if
+you have one.
+
+
 ### Lichess Mobile conventions that always apply
 
 - Riverpod 3.x (`.value`, not `valueOrNull`; no `ProviderListenable` type
@@ -187,3 +241,27 @@ foundation already contains study-tree and game-tree prior art.
   it saturated the machine on every change. Do not restore per-commit
   `./verify` without measuring it. Verified by: the owner reporting 100% CPU
   and full-speed fans after repeated full-suite runs.
+- [2026-09-26, Space Bunny Free] A shared working tree is not survivable with more
+  than one agent: `git reset --hard` run to sync with a squash-merge destroyed
+  17 files of another agent's uncommitted work, ~10 of it recoverable from no ref
+  at all. Unstaged content is never written to the object store, so `git fsck`
+  cannot bring it back — recovery depends on editor history or a filesystem
+  snapshot. Hence the worktree-per-task rule in §3. Verified by: `git status`
+  going from 23 dirty files to 7, and by `git diff --quiet` against every branch
+  showing the lost files identical to `main`.
+- [2026-09-26, Space Bunny Free] A fresh worktree cannot run a single test until
+  `dart run build_runner build` has run in it — `*.freezed.dart` and `*.g.dart`
+  are gitignored, so codegen output is per-worktree, not shared. The symptom is a
+  wall of `No such file or directory` on generated imports that looks like a
+  broken checkout. Costs ~85s per new worktree. Verified by: `flutter test`
+  failing in a new worktree, then passing after build_runner.
+- [2026-09-26, Space Bunny Free] Audit's "High confidence" ratings do not
+  predict whether a finding is a live defect in this fork. Of the findings
+  checked line-by-line against upstream, five collapsed: M23 was 1 of 3 claims
+  in scope, M4 was already fixed, H1's evidence was stale, M18 was not a defect
+  (`ref.onDispose` fires on rebuild as well as on disposal, which is what clears
+  the accumulator), and M17 was inherited unchanged *and* unreachable because
+  nothing writes the table it reads. What correlated with a real, in-scope defect
+  was file-level evidence pointing at fork-introduced code. Verified by: CI logs
+  and `git diff upstream/main` on each claim before acting.
+
