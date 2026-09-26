@@ -676,10 +676,24 @@ class LichessClient implements Client {
 /// * Sets the user-agent header with the app version, build number, and device info.
 /// * Logs all requests and responses with status code >= 400.
 class DefaultClient implements Client {
-  DefaultClient(this._inner, {required this._userAgent});
+  DefaultClient(this._inner, {required this._userAgent, this.timeout = defaultRequestTimeout});
+
+  /// How long a request through this client may take before it is abandoned.
+  ///
+  /// [LichessClient] has always had one; this client had none, so a server that accepted the
+  /// connection and then went quiet left the request pending forever. Upstream's traffic through
+  /// here is mostly short cloud calls, which is presumably why it was never noticed — but this
+  /// fork is local-first, and the opening database, the NNUE weights and the Maia book all come
+  /// through this client. A stall on a multi-megabyte download is an app that sits and waits with
+  /// no way out and no error, so the same deadline its sibling already uses is applied here.
+  ///
+  /// Overridable per call for a caller that legitimately needs longer; the default is the ceiling
+  /// for an ordinary request, not for every request.
+  static const defaultRequestTimeout = LichessClient.defaultRequestTimeout;
 
   final Client _inner;
   final String _userAgent;
+  final Duration timeout;
 
   @override
   Future<StreamedResponse> send(BaseRequest request) async {
@@ -693,7 +707,7 @@ class DefaultClient implements Client {
     );
 
     try {
-      final response = await _inner.send(request);
+      final response = await _inner.send(request).timeout(timeout);
 
       _logIfError(response, quiet: quiet);
 
