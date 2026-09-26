@@ -248,7 +248,36 @@ either mocking those three channels and giving the helper a way to *not* stub th
 provider, or lifting the token check into a provider of its own that depends only on
 `authStorageProvider` and `httpClientFactoryProvider`. Both are real work; neither
 is a five-minute fix, and the second changes production structure for testability.
-Deliberately left as a decision rather than taken quietly.
+
+**Decided: deferred, not done.** The owner reviewed this and the call is to leave the test
+unwritten for now, on the grounds that it belongs with the study-import work rather than
+ahead of it. Recorded in `IMPLEMENTATION_PLAN.md` under Future Horizon so it is picked up
+with that work rather than rediscovered later.
+
+**A correction, because the reasoning above was wrong in one respect.** An earlier draft
+of this note claimed the branch was effectively unreachable because study import had not
+been built. **That is false, and it came from misreading two other findings.** M19 (the
+offline *game* cache with no writer) and M17 (an unreachable table) are about game
+history, not study import.
+
+Study import is built and reachable today:
+
+- `ReviewController.importLichessStudy` calls `/api/study/$id.pgn` (`IMPLEMENTATION_PLAN.md`, Phase 6).
+- The import dialog offers *Lichess Study* as a source alongside PGN text and file.
+- `LichessClient` attaches `Authorization: Bearer <token>` automatically for main hosts (`network/http.dart:530`).
+- Sign-in is reachable from the account menu (`view/account/account_menu.dart:170`).
+
+So a signed-in user's token really is validated at the next launch, and really is deleted
+when Lichess reports it dead. **This is live code, not dead code.**
+
+That does not change the decision, but it does change why the decision is defensible:
+
+- It is **inherited upstream code, unchanged since the fork's foundation commit**, with years of production use behind it. The project's own rule is that inherited behaviour is not this fork's to change unilaterally, and reshaping working code purely so a test can reach it is the weakest version of that rule.
+- The **failure mode is a nuisance, not a loss**: an unexpected logout, or staying signed in with a dead token until a later request 401s. No data loss and no credential exposure. The branch errs toward *deleting* a credential, and the `catchError` keeps a network blip from logging anyone out.
+- It is **live but not urgent**, which is a different claim from unreachable. The natural time to test it is while the study-import UX is being shaped, because that is when the expectations around "signed in" get pinned down.
+
+The distinction matters for whoever picks this up: the gap is real, and so is the argument
+for leaving it alone. Neither was true of the earlier version of this note.
 
 ## What the ratings were worth
 

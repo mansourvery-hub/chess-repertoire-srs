@@ -244,6 +244,13 @@ remains a later option — never a redesign.
       3. Entry Points: integrated "Export PGN" action in `ReviewScopeDrawer` study options sheet, global study export in `StudyChaptersScreen`'s AppBar, and per-chapter export icon buttons on chapter list tiles. *(done: 2026-09-19)*
 
 ### Future Horizon Tasks & Backlog
+- [ ] **F-AUTHTOKEN: Cover the startup token check**
+      1. Why: when Lichess reports a stored token is no longer valid, the app deletes it (`preloaded_data.dart`, the `if (token != null)` branch). It is live — sign-in is reachable from the account menu, `LichessClient` attaches the bearer token automatically, and study import uses it — and it has no test. Deferred by owner decision 2026-09-26, to be done with the study-import work rather than ahead of it.
+      2. Why it was not straightforward: `makeTestProviderScope` stubs `preloadedDataProvider`, the only code that issues `/api/token/test`, so no app-level test can observe it. A test asserting the request was quarantined as a CI-only failure for days and turned out to be unsatisfiable everywhere; it was removed in #16 rather than re-skipped.
+      3. Two ways forward, both real work: mock `package_info_plus`, `device_info_plus` and `path_provider` in the shared binding and give the helper a way to *not* stub the provider; or lift the token check into a provider of its own depending only on `authStorageProvider` and `httpClientFactoryProvider`. The second reshapes inherited upstream code for testability, so it needs an explicit decision.
+      4. Worth asserting at minimum: an invalid token is deleted, a valid one is kept, and a **network error keeps the token** — that last one is the safety rule in the `catchError`, and the one most worth pinning.
+      5. Full account, including the wrong turns: `docs/audit-disposition.md`.
+
 - [x] **F-LOGS: In-App Logs & Diagnostics Audit**
       1. Diagnostic Instrumentation: added dedicated runtime loggers (`ReviewEngine`, `ReviewController`, `StudyRepository`, `StudyImporter`, `FsrsScheduler`, `Database`) emitting rich telemetry for session lifecycles, move validations, lapse contagion, FSRS interval computations, orientation resolutions, and DB performance timings. Included all domain loggers in terminal output filters.
       2. HttpLogScreen Modernization: migrated to `PlatformScaffold`/`PlatformAppBar`, added trace export/share action, displayed error messages directly on log tiles, and built an inspection modal dialog with copy URL/copy details actions.
