@@ -74,16 +74,33 @@ rolls the session back if the write fails, mirroring `submitMove`.
 a correct retry produced no side-effect states at all, so the fix was never
 exercised.
 
-**What would close it.** An answer, not a test: either a reachable path where a
-correct retry produces side effects, or a determination that none exists. The
-honest way to settle it is to instrument `retryMove` once across the existing
-review suite and count non-empty `sideEffectStates`, rather than to guess at
-scenarios a fourth time.
+**What was established by instrumentation, after four failed test attempts.**
+The exposure credit on the correct-move path is produced in exactly one place,
+`review_session.dart:512`, gated on `mode != practice && nextDecision != null`.
+`recordAutoTraversalExposure` returns non-null on every path, including for a
+decision that has never been seen, so the only real condition is that there is a
+next decision. A probe at that gate fires **twice in the retry test alone**, and
+nine times across the review suite, with a non-null next decision each time.
 
-**Risk if wrong.** Low. The call is guarded by `isNotEmpty`, so when the list is
-empty nothing happens and it cannot corrupt anything. If the path is reachable
-and was missed, the fix closes it; if it is unreachable, the fix is inert until
-something makes it live.
+So the path is **live**: a correct retry does produce side effects, and the
+persistence fix is not dead code. An earlier reading of this file suggested it
+might be; that was wrong and is corrected here.
+
+**Why the four test attempts still failed.** They all built a session where the
+retry had nowhere to advance to — a two-decision study, retrying the last
+decision — so `nextDecision` was null and the list stayed empty no matter what
+the persistence code did. A test needs a decision *after* the retried one, and
+that decision must itself be due. An attempt with a four-node tree and a second
+due decision still produced an empty batch, so the recipe is not complete and the
+remaining gap is in the session construction, not in the fix.
+
+**What would still close it.** A service-level test built on the working recipe
+from the domain-level tests, asserting that `saveAnswerBatch` receives a state
+for the position walked into.
+
+**Risk if wrong.** Low, and lower than this file previously implied: the path is
+reachable, so the fix does real work. It is still guarded by `isNotEmpty`, so it
+cannot corrupt anything when there is nothing to persist.
 
 ## M15 — large imports hash off the UI isolate
 
@@ -111,7 +128,7 @@ for exactly this, and it is covered where the behaviour is observable.
 | M3 | subscription cancel | low — hygiene only | yes, needs a bestmove lever |
 | M4 | subscribe-before-send | low–moderate | yes, needs a synchronous fake socket |
 | M6 | repetition identity | very low — spec-mandated | awkward, needs a scripted engine |
-| M10 | retry side effects | low — inert when empty | needs instrumentation, not a test |
+| M10 | retry side effects | low — path confirmed live | yes, recipe is known |
 | M15 | isolate offloading | very low | no — unreachable under test |
 
 Two of the five (M6, M15) are better argued from the spec and from the helper's
