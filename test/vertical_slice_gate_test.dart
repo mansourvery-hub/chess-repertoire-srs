@@ -145,7 +145,10 @@ void main() {
         await pumpAsync(tester, 100);
 
         // Verify lapse feedback banner and arrow
-        expect(find.textContaining('Repertoire was Nf3'), findsOneWidget);
+        expect(
+          find.text('Play this move to continue. The position will come back soon.'),
+          findsOneWidget,
+        );
 
         // Reguess on the board: play the correct move 2. Nf3
         await playMove(tester, 'g1', 'f3');

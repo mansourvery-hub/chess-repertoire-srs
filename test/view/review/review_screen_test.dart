@@ -178,7 +178,10 @@ void main() {
       await pumpAsync(tester, 100);
 
       // Shows lapse feedback banner
-      expect(find.textContaining('Repertoire was d4'), findsOneWidget);
+      expect(
+        find.text('Play this move to continue. The position will come back soon.'),
+        findsOneWidget,
+      );
       expect(find.text('Skip'), findsOneWidget);
 
       // Reguess on the board by playing the correct repertoire move d2 -> d4
@@ -999,8 +1002,8 @@ void main() {
       await tester.pumpWidget(app);
       await pumpAsync(tester);
 
-      // Vanilla mode: SRS Diagnostics HUD is NOT rendered
-      expect(find.text('SRS DIAGNOSTICS'), findsNothing);
+      // Vanilla mode: calm diagnostics strip is NOT rendered
+      expect(find.textContaining('expected'), findsNothing);
 
       // Toggle srsDiagnostics on
       final element = tester.element(find.byType(ReviewScreen));
@@ -1008,8 +1011,8 @@ void main() {
       await container.read(studyPreferencesProvider.notifier).toggleSrsDiagnostics();
       await pumpAsync(tester);
 
-      // Diagnostics HUD is now rendered with live metrics
-      expect(find.text('SRS DIAGNOSTICS'), findsOneWidget);
+      // Diagnostics HUD is now rendered with live metrics (calm sentence case)
+      expect(find.textContaining('expected'), findsOneWidget);
       expect(find.textContaining('R: 100% (New)'), findsOneWidget);
       expect(find.textContaining('D: 5.0/10'), findsOneWidget);
     });
@@ -1109,7 +1112,7 @@ void main() {
     });
 
     testWidgets(
-      'displays daily limit reached view and navigates to SrsSettingsScreen on Adjust Limit',
+      'displays daily limit reached view and navigates to SrsSettingsScreen on Change daily limit',
       (tester) async {
         final study = importPgn(
           '1. e4 e5 *',
@@ -1153,15 +1156,12 @@ void main() {
         await pumpAsync(tester);
 
         // Daily limit reached view is now shown!
-        expect(find.text('Daily Goal Reached!'), findsOneWidget);
-        expect(
-          find.text('Daily review limit reached (1/1 positions reviewed today).'),
-          findsOneWidget,
-        );
+        expect(find.text('Daily limit reached.'), findsOneWidget);
+        expect(find.textContaining('positions today.'), findsOneWidget);
 
-        // Tap Adjust Limit button
-        expect(find.text('Adjust Limit'), findsOneWidget);
-        await tester.tap(find.text('Adjust Limit'));
+        // Tap Change daily limit button
+        expect(find.text('Change daily limit'), findsOneWidget);
+        await tester.tap(find.text('Change daily limit'));
         await tester.pumpAndSettle();
 
         // Navigates to SrsSettingsScreen
