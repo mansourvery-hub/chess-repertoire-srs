@@ -15,12 +15,10 @@ import 'package:chess_srs/src/view/analysis/game_analysis_board.dart';
 import 'package:chess_srs/src/view/explorer/opening_explorer_settings.dart';
 import 'package:chess_srs/src/view/explorer/opening_explorer_view.dart';
 import 'package:chess_srs/src/widgets/adaptive_action_sheet.dart';
-import 'package:chess_srs/src/widgets/bottom_bar.dart';
 import 'package:chess_srs/src/widgets/buttons.dart';
 import 'package:chess_srs/src/widgets/move_list.dart';
 import 'package:chess_srs/src/widgets/platform.dart';
 import 'package:collection/collection.dart';
-import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
@@ -312,48 +310,44 @@ class _BottomBar extends ConsumerWidget {
       OpeningDatabase.chessdb => 'ChessDB',
     };
 
-    return BottomBar(
-      children: [
-        BottomBarButton(
-          label: dbLabel,
-          showLabel: true,
-          onTap: () => showModalBottomSheet<void>(
-            context: context,
-            isScrollControlled: true,
-            showDragHandle: true,
-            isDismissible: true,
-            builder: (_) => const OpeningExplorerSettings(),
+    // Diagram actions replacing the legacy bottom bar: same features,
+    // plain text buttons. Database/Flip/Back/Forward all survive the move.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
+      child: Row(
+        children: [
+          RepeatButton(
+            onLongPress: canGoBack ? () => _moveBackward(ref) : null,
+            child: SrsTextButton(
+              key: const ValueKey('goto-previous'),
+              label: 'Back',
+              onPressed: canGoBack ? () => _moveBackward(ref) : null,
+            ),
           ),
-          icon: Icons.tune,
-        ),
-        BottomBarButton(
-          label: 'Flip',
-          tooltip: context.l10n.flipBoard,
-          showLabel: true,
-          onTap: () => ref.read(ctrlProvider.notifier).toggleBoard(),
-          icon: CupertinoIcons.arrow_2_squarepath,
-        ),
-        RepeatButton(
-          onLongPress: canGoBack ? () => _moveBackward(ref) : null,
-          child: BottomBarButton(
-            onTap: canGoBack ? () => _moveBackward(ref) : null,
-            label: 'Previous',
-            showLabel: true,
-            icon: CupertinoIcons.chevron_back,
-            showTooltip: false,
+          RepeatButton(
+            onLongPress: canGoNext ? () => _moveForward(ref) : null,
+            child: SrsTextButton(
+              key: const ValueKey('goto-next'),
+              label: 'Forward',
+              onPressed: canGoNext ? () => _moveForward(ref) : null,
+            ),
           ),
-        ),
-        RepeatButton(
-          onLongPress: canGoNext ? () => _moveForward(ref) : null,
-          child: BottomBarButton(
-            icon: CupertinoIcons.chevron_forward,
-            label: 'Next',
-            showLabel: true,
-            onTap: canGoNext ? () => _moveForward(ref) : null,
-            showTooltip: false,
+          SrsTextButton(
+            label: dbLabel,
+            onPressed: () => showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              showDragHandle: true,
+              isDismissible: true,
+              builder: (_) => const OpeningExplorerSettings(),
+            ),
           ),
-        ),
-      ],
+          SrsTextButton(
+            label: 'Flip',
+            onPressed: () => ref.read(ctrlProvider.notifier).toggleBoard(),
+          ),
+        ],
+      ),
     );
   }
 
