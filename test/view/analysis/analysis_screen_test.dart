@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:chess_srs/src/design/design.dart';
 import 'package:chess_srs/src/model/analysis/analysis_controller.dart';
 import 'package:chess_srs/src/model/analysis/analysis_preferences.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
@@ -19,6 +18,7 @@ import 'package:chess_srs/src/view/engine/engine_button.dart';
 import 'package:chess_srs/src/view/engine/engine_gauge.dart';
 import 'package:chess_srs/src/view/engine/engine_lines.dart';
 import 'package:chess_srs/src/view/more/more_tab_screen.dart';
+import 'package:chess_srs/src/widgets/bottom_bar.dart';
 import 'package:chess_srs/src/widgets/move_times_chart.dart';
 import 'package:chess_srs/src/widgets/pgn.dart';
 import 'package:chess_srs/src/widgets/pockets.dart';
@@ -89,21 +89,17 @@ void main() {
       await tester.pumpWidget(app);
 
       // cannot go forward
-      expect(tester.widget<SrsTextButton>(find.byKey(const Key('goto-next'))).onPressed, isNull);
+      expect(tester.widget<BottomBarButton>(find.byKey(const Key('goto-next'))).onTap, isNull);
 
       // can go back
       expect(
-        tester.widget<SrsTextButton>(find.byKey(const Key('goto-previous'))).onPressed,
+        tester.widget<BottomBarButton>(find.byKey(const Key('goto-previous'))).onTap,
         isNotNull,
       );
 
       // goto previous move
       await tester.tap(find.byKey(const Key('goto-previous')));
       await tester.pumpAndSettle();
-      // The tree view debounces path changes (kFastReplayDebounceDelay);
-      // pump it explicitly: the old bar's long splash animation used to
-      // advance fake time past the delay by accident.
-      await tester.pump(kFastReplayDebounceDelay);
 
       final currentMove = find.textContaining('Kc1');
       expect(currentMove, findsOneWidget);
@@ -913,7 +909,7 @@ void main() {
           (tester) async {
             await makeEngineTestApp(tester, gameId: const GameId('xze7RH66'));
 
-            expect(find.text('Loading…'), findsOne);
+            expect(find.byType(CircularProgressIndicator), findsOne);
             // wait for the game to be loaded
             await tester.pump(const Duration(milliseconds: 50));
 
@@ -931,7 +927,7 @@ void main() {
               gameId: const GameId('xze7RH66'),
             );
 
-            expect(find.text('Loading…'), findsOne);
+            expect(find.byType(CircularProgressIndicator), findsOne);
             // wait for the game to be loaded
             await tester.pump(const Duration(milliseconds: 50));
 
@@ -1184,7 +1180,7 @@ void main() {
         ) async {
           await makeEngineTestApp(tester, isEngineEnabled: false, gameId: const GameId('xze7RH66'));
 
-          expect(find.text('Loading…'), findsOne);
+          expect(find.byType(CircularProgressIndicator), findsOne);
           // wait for the game to be loaded
           await tester.pump(const Duration(milliseconds: 50));
 
@@ -1453,9 +1449,7 @@ void main() {
       expect(boardHasPiece(tester, Square.g3, Piece.whiteKing), isFalse);
 
       // Navigate back to More tab
-      await tester.tap(
-        find.descendant(of: find.byType(SrsPageHead), matching: find.text('Review')),
-      );
+      await tester.pageBack();
       await tester.pumpAndSettle();
 
       // Verify we're back at More tab
@@ -1503,7 +1497,7 @@ void main() {
       expect(boardHasPiece(tester, Square.f4, Piece.whitePawn), isTrue);
 
       //open menu
-      await tester.tap(find.text('Menu'));
+      await tester.tap(find.byIcon(Icons.menu));
       await tester.pump();
 
       //tap Clear moves
@@ -1511,17 +1505,12 @@ void main() {
       await tester.tap(find.text('Clear moves'));
       await tester.pump();
 
-      // The tree view debounces path changes; let it apply before asserting.
-      await tester.pump(kFastReplayDebounceDelay);
-
       //verify moves are cleared
       expect(find.textContaining('e4'), findsNothing);
       expect(boardHasPiece(tester, Square.e4, Piece.whitePawn), isFalse);
 
       // Navigate back to More tab
-      await tester.tap(
-        find.descendant(of: find.byType(SrsPageHead), matching: find.text('Review')),
-      );
+      await tester.pageBack();
       await tester.pumpAndSettle();
 
       // Verify we're back at More tab
@@ -1566,9 +1555,7 @@ void main() {
       expect(boardHasPiece(tester, Square.f4, Piece.whitePawn), isTrue);
 
       // Navigate back to More tab
-      await tester.tap(
-        find.descendant(of: find.byType(SrsPageHead), matching: find.text('Review')),
-      );
+      await tester.pageBack();
       await tester.pumpAndSettle();
 
       // Verify we're back at More tab

@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:chess_srs/src/constants.dart';
-import 'package:chess_srs/src/design/design.dart';
 import 'package:chess_srs/src/model/analysis/analysis_controller.dart';
 import 'package:chess_srs/src/model/auth/auth_controller.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
@@ -255,9 +254,7 @@ void main() {
       expect(boardHasPiece(tester, Square.e4, Piece.whitePawn), isTrue);
 
       // Go back to "more" screen and open opening explorer
-      await tester.tap(
-        find.descendant(of: find.byType(SrsPageHead), matching: find.text('Review')),
-      );
+      await tester.pageBack();
       await tester.pump();
 
       await tester.tap(find.text('Opening explorer'));

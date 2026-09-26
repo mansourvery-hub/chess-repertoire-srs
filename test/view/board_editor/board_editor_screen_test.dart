@@ -46,23 +46,6 @@ void main() {
       );
     });
 
-    testWidgets('Status panel shows live FEN and side-to-move control', (tester) async {
-      final app = await makeTestProviderScopeApp(tester, home: const BoardEditorScreen());
-      await tester.pumpWidget(app);
-      await tester.pumpAndSettle();
-
-      // Segmented control offers both sides; FEN readout shows White to move.
-      expect(find.text('White to play'), findsOneWidget);
-      expect(find.text('Black to play'), findsOneWidget);
-      expect(find.textContaining(' w KQkq '), findsOneWidget);
-      expect(find.text('Copy FEN'), findsOneWidget);
-
-      // Switching sides updates the live FEN readout.
-      await tester.tap(find.text('Black to play'));
-      await tester.pumpAndSettle();
-      expect(find.textContaining(' b KQkq '), findsOneWidget);
-    });
-
     testWidgets('Opening with variant loads its starting position', (tester) async {
       final app = await makeTestProviderScopeApp(
         tester,
