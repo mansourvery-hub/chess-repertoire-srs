@@ -16,14 +16,22 @@ bestmove, and nothing was listening for it.
 **Evidence.** The generation tag and the `_isCurrentSearch` guard around it are
 covered by a test that fails without them. The subscription cancel is not.
 
-**What would close it.** A fake engine that lets a test hold a search open,
-supersede it, then deliver a bestmove and assert no state change. The fake
-engine infrastructure exists; what is missing is a lever to deliver a bestmove
-on demand.
+**What would close it, and why it probably should not be closed.** Investigated:
+`Search` objects are created and owned inside the evaluator (`_currentSearch` is
+private, and the test fake operates at the UCI transport layer below the point
+where `search.infos` exists). The only observable consequence of the cancel is
+that a stream nobody can reach stops having a listener, and every callback is
+already gated on `_isCurrentSearch`, so there is no behavioural difference left
+to observe.
 
-**Risk if wrong.** Low. The cancel is a resource-hygiene call, not a correctness
-one, and a redundant live subscription cannot produce a wrong evaluation —
-worst case it wastes work.
+Testing it would mean exposing `_currentSearch` or injecting a search factory —
+a production change made purely for testability, in order to assert a two-line
+hygiene call. That is a bad trade. Recommendation: leave it, and stop describing
+it as untested work waiting to be done.
+
+**Risk if wrong.** Low, and bounded by construction: with `_isCurrentSearch`
+gating every callback, a redundant live subscription cannot produce a wrong
+evaluation. Worst case it wastes work.
 
 ## M4 — cloud evaluation subscribes before it sends
 
@@ -125,15 +133,18 @@ for exactly this, and it is covered where the behaviour is observable.
 
 | Item | Unproven part | Risk if wrong | Closable in this harness |
 |---|---|---|---|
-| M3 | subscription cancel | low — hygiene only | yes, needs a bestmove lever |
-| M4 | subscribe-before-send | low–moderate | yes, needs a synchronous fake socket |
+| M3 | subscription cancel | low — hygiene only | no — would need a production change for testability |
+| M4 | subscribe-before-send | low–moderate | yes — a socket that answers from `send` |
 | M6 | repetition identity | very low — spec-mandated | awkward, needs a scripted engine |
 | M10 | retry side effects | low — path confirmed live | yes, recipe is known |
 | M15 | isolate offloading | very low | no — unreachable under test |
 
 Two of the five (M6, M15) are better argued from the spec and from the helper's
-existing contract than from a test, and I would not spend more on them. M3 and
-M4 are genuinely closable and are worth doing when someone has an afternoon.
+existing contract than from a test, and I would not spend more on them. M4 is
+closable with a socket fake that answers from `send`, which turns the race into
+determinism. M3 is not worth closing: its only observable effect is on a stream
+no test can reach, and asserting it would need a production change made purely
+for testability.
 M10 has since been settled by instrumentation: the path is live, a correct retry
 does produce side effects, and the fix is not dead code. The recipe for its test
 is now known — every failed attempt built a session where the retry had nowhere
