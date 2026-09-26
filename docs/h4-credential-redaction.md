@@ -1,14 +1,27 @@
 # H4 — credential redaction in logs: specification
 
-Status: **specified, not implemented.** Audit finding H4 in `audit.md` is open and
-this document is the contract for closing it. It exists because an earlier partial
-implementation was lost, and a specification that outlives an implementation is
-cheaper to rebuild from than to reconstruct from a diff.
+Status: **implemented** — `main` at `89248e474`, PR #10, full suite green. H4 is
+closed. This document remains as the record of what was specified and why, because
+it explains *why* two of the specified tests turned out to be impossible rather
+than skipped.
 
-**Check for a recovered implementation before writing one.** If the work that was
-in flight is recovered from an editor's local history or a filesystem snapshot,
-compare it against this document rather than replacing it — it may already cover
-sites listed here as open.
+**What the implementation changed against this document**, both recorded in PR #10:
+
+- **Seven call sites, not five.** The two error-response loggers in `LichessClient`
+  and `DefaultClient` also interpolate the full URL, and were found by scanning for
+  `request.url` after the first pass. The list of five above is therefore not
+  exhaustive, and the list below should be read as "these were known", not "these
+  are all of them".
+- **The end-to-end test is unreachable in this harness.** `http.dart` returns from
+  its `onRequest` hook when `FLUTTER_TEST` is set, so no `http_log` row is written
+  under test. Lifting that guard would make every test write log rows.
+- **The query-parameter classification guard was dropped.** Scoped to the maps that
+  become a URL it still produced false positives. It was replaced by a narrow check
+  on the call sites themselves, which has none.
+
+**If the earlier lost work is ever recovered** from an editor's local history or a
+filesystem snapshot, compare it against this document rather than replacing what is
+now on `main` — it may cover a site the guards do not cover.
 
 ## What is exposed, precisely
 
