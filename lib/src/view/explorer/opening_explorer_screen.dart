@@ -1,4 +1,5 @@
 import 'package:chess_srs/src/constants.dart';
+import 'package:chess_srs/src/design/design.dart';
 import 'package:chess_srs/src/model/analysis/analysis_controller.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
 import 'package:chess_srs/src/model/explorer/opening_explorer.dart';
@@ -13,6 +14,7 @@ import 'package:chess_srs/src/view/analysis/analysis_share_screen.dart';
 import 'package:chess_srs/src/view/analysis/game_analysis_board.dart';
 import 'package:chess_srs/src/view/explorer/opening_explorer_settings.dart';
 import 'package:chess_srs/src/view/explorer/opening_explorer_view.dart';
+import 'package:chess_srs/src/view/review/review_copy.dart';
 import 'package:chess_srs/src/widgets/adaptive_action_sheet.dart';
 import 'package:chess_srs/src/widgets/bottom_bar.dart';
 import 'package:chess_srs/src/widgets/buttons.dart';
@@ -47,17 +49,34 @@ class OpeningExplorerScreen extends ConsumerWidget {
     };
     return WakelockWidget(
       child: Scaffold(
-        body: body,
-        appBar: AppBar(
-          title: Text(context.l10n.openingExplorer),
-          actions: [
-            SemanticIconButton(
-              semanticsLabel: context.l10n.studyShareAndExport,
-              onPressed: () => _showShareMenu(context, ref),
-              icon: const PlatformShareIcon(),
+        // The design's sub-head replaces the Lichess app bar on the Explore scenes
+        // (design/docs/03 §12). The move list the app bar used to carry as `bottom`
+        // becomes the first row of the body, and the screen's name becomes a quiet line
+        // under the bar, which is where the demo puts `.scene-title`.
+        appBar: SrsSubHead(
+          backLabel: kSrsLibraryLabel,
+          onBack: () => Navigator.of(context).maybePop(),
+          trailing: SemanticIconButton(
+            semanticsLabel: context.l10n.studyShareAndExport,
+            onPressed: () => _showShareMenu(context, ref),
+            icon: const PlatformShareIcon(),
+          ),
+        ),
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+              child: Text(
+                context.l10n.openingExplorer,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: SrsText.settingLabel(context.srs.ink2),
+              ),
             ),
+            _MoveList(options: options),
+            Expanded(child: body),
           ],
-          bottom: _MoveList(options: options),
         ),
       ),
     );
@@ -210,13 +229,10 @@ class _Body extends ConsumerWidget {
   }
 }
 
-class _MoveList extends ConsumerWidget implements PreferredSizeWidget {
+class _MoveList extends ConsumerWidget {
   const _MoveList({required this.options});
 
   final AnalysisOptions options;
-
-  @override
-  Size get preferredSize => const Size.fromHeight(40.0);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

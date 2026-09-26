@@ -10,6 +10,7 @@ import 'package:chess_srs/src/persistence/persistence.dart';
 import 'package:chess_srs/src/review/review_service.dart';
 import 'package:chess_srs/src/view/analysis/analysis_screen.dart';
 import 'package:chess_srs/src/view/review/repertoire_import_dialog.dart';
+import 'package:chess_srs/src/view/review/review_copy.dart';
 import 'package:chess_srs/src/view/review/review_screen.dart';
 import 'package:chess_srs/src/view/settings/srs_settings_screen.dart';
 import 'package:chess_srs/src/widgets/board.dart';
@@ -1112,7 +1113,7 @@ void main() {
     });
 
     testWidgets(
-      'displays daily limit reached view and navigates to SrsSettingsScreen on Change daily limit',
+      'displays daily limit reached view and navigates to SrsSettingsScreen on Adjust limit',
       (tester) async {
         final study = importPgn(
           '1. e4 e5 *',
@@ -1156,12 +1157,14 @@ void main() {
         await pumpAsync(tester);
 
         // Daily limit reached view is now shown!
-        expect(find.text('Daily limit reached.'), findsOneWidget);
+        expect(find.text(kSrsDailyLimitReachedTitle), findsOneWidget);
         expect(find.textContaining('positions today.'), findsOneWidget);
 
-        // Tap Change daily limit button
-        expect(find.text('Change daily limit'), findsOneWidget);
-        await tester.tap(find.text('Change daily limit'));
+        // Tap the Adjust limit link. The label is the design's, single-sourced in
+        // review_copy.dart — it used to be the literal 'Change daily limit', and the rebase
+        // onto main left this test asserting a string the app no longer renders.
+        expect(find.text(kSrsAdjustLimitLabel), findsOneWidget);
+        await tester.tap(find.text(kSrsAdjustLimitLabel));
         await tester.pumpAndSettle();
 
         // Navigates to SrsSettingsScreen
@@ -1170,6 +1173,49 @@ void main() {
         expect(find.text('Daily limit'), findsOneWidget);
       },
     );
+
+    // The shortcut bug, pinned directly. `S` did nothing in the shipped app while `P` worked
+    // on the idle screen: the review view reuses one FocusNode and relies on a one-shot
+    // `autofocus`, which silently loses the race for the route's focus scope and is never
+    // retried. Key events only reach the primary focus and its ancestors, so a node that
+    // never gains focus means every binding in the view is dead.
+    //
+    // A test that just sends the key cannot catch this — the fake app harness always grants
+    // focus, which is exactly why the old shortcut tests passed against a broken build and
+    // have since disappeared from the tree. Assert the precondition the keys depend on.
+    testWidgets('the shortcut node actually holds focus', (tester) async {
+      final study = importPgn(
+        '1. e4 e5 2. Nf3 Nc6 *',
+        studyTitle: 'Shortcut Focus',
+        repertoireSide: Side.white,
+      );
+      await tester.runAsync(() => repo.saveImportResult(study));
+
+      final app = await makeTestProviderScopeApp(
+        tester,
+        home: const ReviewScreen(),
+        overrides: {
+          srsStudyRepositoryProvider: srsStudyRepositoryProvider.overrideWith((ref) => repo),
+          clockProvider: clockProvider.overrideWithValue(clock),
+          reviewServiceProvider: reviewServiceProvider.overrideWith(
+            (ref) => ReviewService(repository: repo, clock: clock),
+          ),
+        },
+      );
+
+      await tester.pumpWidget(app);
+      await pumpAsync(tester, 700);
+
+      final shortcutFocus = tester
+          .widgetList<Focus>(find.byType(Focus))
+          .firstWhere((f) => f.autofocus && f.focusNode != null);
+
+      expect(
+        shortcutFocus.focusNode!.hasFocus,
+        isTrue,
+        reason: 'if this node does not hold focus, S/Space/Enter can never be delivered',
+      );
+    });
 
     testWidgets(
       'renders narrow layout without overflow and displays board with side column below',
@@ -1208,14 +1254,19 @@ void main() {
         expect(find.byType(SrsReviewLayout), findsOneWidget);
         expect(find.byType(Chessboard), findsOneWidget);
         expect(find.text('White to play'), findsOneWidget);
-        // By default, showMoveHistory is false
-        expect(find.byType(SrsNotationLine), findsNothing);
 
-        // Enabling showMoveHistory shows the notation line
-        final container = ProviderScope.containerOf(tester.element(find.byType(ReviewScreen)));
-        await container.read(studyPreferencesProvider.notifier).setShowMoveHistory(true);
-        await tester.pumpAndSettle();
+        // showMoveHistory defaults to true: design/docs/03-components.md §111 calls the
+        // notation line "the headline", so a first-run user is meant to see it. This used to
+        // assert the opposite and to switch it on to prove the preference was wired — which
+        // is now the redundant direction.
         expect(find.byType(SrsNotationLine), findsOneWidget);
+
+        // Turning it off still hides it, which is the half of the contract worth keeping:
+        // the row is a real control, not a constant.
+        final container = ProviderScope.containerOf(tester.element(find.byType(ReviewScreen)));
+        await container.read(studyPreferencesProvider.notifier).setShowMoveHistory(false);
+        await tester.pumpAndSettle();
+        expect(find.byType(SrsNotationLine), findsNothing);
 
         expect(find.widgetWithText(SrsTextButton, 'Skip'), findsOneWidget);
 

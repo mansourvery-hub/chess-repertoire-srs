@@ -11,7 +11,9 @@ import 'package:chess_srs/src/model/study/study_preferences.dart';
 import 'package:chess_srs/src/review/review_controller.dart';
 import 'package:chess_srs/src/view/review/library_sheet.dart';
 import 'package:chess_srs/src/view/review/repertoire_import_dialog.dart';
+import 'package:chess_srs/src/view/review/review_copy.dart';
 import 'package:chess_srs/src/view/review/review_scope_drawer.dart';
+import 'package:chess_srs/src/view/review/review_states.dart';
 import 'package:chess_srs/src/view/settings/srs_settings_screen.dart';
 import 'package:chess_srs/src/widgets/board.dart';
 import 'package:chessground/chessground.dart';
@@ -44,52 +46,11 @@ class ReviewScreen extends ConsumerWidget {
             }
             return _ActiveReviewView(state: state, prompt: state.currentPrompt!);
           },
-          loading: () => Center(
-            child: Text(
-              'Loading…',
-              style: TextStyle(fontFamily: SrsText.ui, fontSize: 15, color: c.ink2),
-            ),
-          ),
-          error: (err, stack) => Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 36.0),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('Something went wrong.', style: SrsText.title(c.ink)),
-                    const SizedBox(height: 12.0),
-                    Text(
-                      '$err',
-                      style: TextStyle(
-                        fontFamily: SrsText.ui,
-                        fontSize: 15,
-                        height: 1.45,
-                        color: c.ink2,
-                      ),
-                    ),
-                    const SizedBox(height: 24.0),
-                    Wrap(
-                      spacing: 18.0,
-                      runSpacing: 10.0,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        SrsPillButton(
-                          label: 'Try again',
-                          onPressed: () => ref.invalidate(reviewControllerProvider),
-                        ),
-                        SrsTextButton(
-                          label: 'Copy details',
-                          onPressed: () => Clipboard.setData(ClipboardData(text: '$err')),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          loading: () => const SrsLoadingView(),
+          error: (err, stack) => SrsErrorView(
+            detail: kSrsReviewLoadFailedDetail,
+            onRetry: () => ref.invalidate(reviewControllerProvider),
+            onCopyDetails: () => copySrsErrorDetails('${err.runtimeType}: $err\n\n$stack'),
           ),
         ),
       ),
@@ -130,7 +91,7 @@ class _NoStudiesViewState extends State<_NoStudiesView> {
           ),
           const SizedBox(height: 32.0),
           Text(
-            'Bring your repertoire.',
+            kSrsBringYourRepertoire,
             style: TextStyle(
               fontFamily: SrsText.ui,
               fontSize: headlineSize,
@@ -142,7 +103,7 @@ class _NoStudiesViewState extends State<_NoStudiesView> {
           ),
           const SizedBox(height: 16.0),
           Text(
-            'Import a PGN or a Lichess study. Everything stays on this device, and reviews work offline.',
+            kSrsFirstLaunchLede,
             style: TextStyle(fontFamily: SrsText.ui, fontSize: 17, height: 1.45, color: c.ink2),
           ),
           const SizedBox(height: 28.0),
@@ -155,7 +116,7 @@ class _NoStudiesViewState extends State<_NoStudiesView> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Drop a PGN file here',
+                    kSrsDropPgnHere,
                     style: TextStyle(fontFamily: SrsText.ui, fontSize: 15.5, color: c.ink),
                   ),
                   const SizedBox(height: 16.0),
@@ -346,7 +307,9 @@ class _NothingDueView extends ConsumerWidget {
     final learning = dueDecisions;
     final fresh = (totalDecisions - learnedDecisions).clamp(0, totalDecisions);
 
-    final displayTitle = state.isDailyLimitReached ? 'Daily limit reached.' : 'Nothing due.';
+    final displayTitle = state.isDailyLimitReached
+        ? kSrsDailyLimitReachedTitle
+        : kSrsNothingDueTitle;
     final headlineSize = math.max(44.0, math.min(mediaQuery.size.width * 0.09, 72.0));
 
     return CallbackShortcuts(
@@ -423,7 +386,10 @@ class _NothingDueView extends ConsumerWidget {
                             TextSpan(
                               style: TextStyle(fontFamily: SrsText.ui, fontSize: 18, color: c.ink2),
                               children: [
-                                const TextSpan(text: 'Next review '),
+                                // `timeUntilNextReview` already carries its own
+                                // "in ..." prefix (see review_controller.dart), so
+                                // this renders the demo's `Next review in {x}.`
+                                const TextSpan(text: kSrsNextReviewPrefix),
                                 TextSpan(
                                   text: state.timeUntilNextReview,
                                   style: TextStyle(
@@ -438,7 +404,7 @@ class _NothingDueView extends ConsumerWidget {
                           )
                         else
                           Text(
-                            'Next review will appear automatically.',
+                            kSrsNoNextReview,
                             style: TextStyle(fontFamily: SrsText.ui, fontSize: 18, color: c.ink2),
                           ),
                         const SizedBox(height: 38.0),
@@ -519,7 +485,7 @@ class _NothingDueView extends ConsumerWidget {
                             ),
                             if (state.isDailyLimitReached)
                               SrsTextButton(
-                                label: 'Change daily limit',
+                                label: kSrsAdjustLimitLabel,
                                 onPressed: () => Navigator.push(
                                   context,
                                   MaterialPageRoute<void>(
@@ -531,9 +497,7 @@ class _NothingDueView extends ConsumerWidget {
                         ),
                         const SizedBox(height: 18.0),
                         Text(
-                          state.isDailyLimitReached
-                              ? 'Practice is still available and does not change your schedule.'
-                              : 'Practice never changes your schedule.',
+                          kSrsPracticeFootnote,
                           style: TextStyle(fontFamily: SrsText.ui, fontSize: 13.5, color: c.ink3),
                         ),
                       ],
@@ -607,6 +571,26 @@ class _ActiveReviewViewState extends ConsumerState<_ActiveReviewView> {
   void initState() {
     super.initState();
     _initController();
+    _ensureShortcutFocus();
+  }
+
+  /// Makes sure this view's node actually holds focus, so its shortcuts are reachable.
+  ///
+  /// `Focus(autofocus: true)` gets exactly one attempt, made in a post-frame callback, and
+  /// it only succeeds if nothing else in the route's focus scope holds focus by then. When
+  /// that race is lost the node never receives focus, and `FocusNode.autofocus` does not
+  /// try again. Key events only reach the primary focus and then its *ancestors*, so a node
+  /// that never gains focus means no shortcut in this view is ever delivered — which is
+  /// exactly the reported symptom: `S` does nothing here, while `P` works on the idle
+  /// screen, whose bare `Focus(autofocus: true)` mounts a fresh node and wins the race.
+  ///
+  /// Asking again is safe: nothing in the review tree wants focus. chessground registers no
+  /// `Focus` nodes at all, so clicking the board cannot take it, and the top-bar buttons
+  /// are the only other candidates. Guarded so it costs one no-op check per build.
+  void _ensureShortcutFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_focusNode.hasFocus) _focusNode.requestFocus();
+    });
   }
 
   void _initController() {
@@ -695,18 +679,42 @@ class _ActiveReviewViewState extends ConsumerState<_ActiveReviewView> {
 
     void onSkip() => ref.read(reviewControllerProvider.notifier).skip();
 
-    return Focus(
-      focusNode: _focusNode,
-      autofocus: true,
-      child: CallbackShortcuts(
-        bindings: {
-          const SingleActivator(LogicalKeyboardKey.space): () {
-            if (state.isAwaitingAdvance) onContinue();
-          },
-          const SingleActivator(LogicalKeyboardKey.keyS): () {
-            if (!state.isAwaitingAdvance) onSkip();
-          },
+    // design/docs/04 §6: announce the outcome politely, exactly as the demo's
+    // `<div role="status" aria-live="polite">` does. The move the user *should* have
+    // played is named in both sentences, so a correction is actionable without sight.
+    final expectedSan = prompt.expectedMoves.firstOrNull?.san ?? state.expectedMove?.san;
+    final announcement = switch (state.feedback) {
+      ReviewFeedback.incorrect when expectedSan != null => srsNotThisMoveAnnouncement(expectedSan),
+      ReviewFeedback.correct when expectedSan != null => srsCorrectAnnouncement(expectedSan),
+      _ => '',
+    };
+
+    void continueIfShown() {
+      if (state.isAwaitingAdvance) onContinue();
+    }
+
+    // The focused node has to sit *inside* CallbackShortcuts. CallbackShortcuts installs
+    // its own `Focus(canRequestFocus: false, onKeyEvent: …)` as a descendant of whatever
+    // wraps it, and the focus manager only dispatches a key event to the primary focus and
+    // then to that node's *ancestors*. With the focus outside, Space and S never reached
+    // the bindings at all.
+    //
+    // Focus is re-asserted on every build because the one-shot autofocus above is not
+    // reliable here; see _ensureShortcutFocus.
+    _ensureShortcutFocus();
+    return CallbackShortcuts(
+      bindings: {
+        // design/docs/04 §4: Space *or* Enter continues while a note is showing.
+        const SingleActivator(LogicalKeyboardKey.space): continueIfShown,
+        const SingleActivator(LogicalKeyboardKey.enter): continueIfShown,
+        const SingleActivator(LogicalKeyboardKey.numpadEnter): continueIfShown,
+        const SingleActivator(LogicalKeyboardKey.keyS): () {
+          if (!state.isAwaitingAdvance) onSkip();
         },
+      },
+      child: Focus(
+        focusNode: _focusNode,
+        autofocus: true,
         child: SrsReviewLayout(
           whiteAtBottom: state.boardOrientation == Side.white,
           topBar: SrsTopBar(
@@ -780,6 +788,9 @@ class _ActiveReviewViewState extends ConsumerState<_ActiveReviewView> {
               onSkip: onSkip,
               onContinue: onContinue,
             ),
+            // Last in the column, so the spoken sentence follows the board and the
+            // controls rather than preceding them.
+            announcement: SrsLiveRegion(announcement),
           ),
         ),
       ),
@@ -920,10 +931,7 @@ class _AnswerSlot extends StatelessWidget {
       children: [
         SrsSan(san, style: SrsText.answerMove(wide, c.accent)),
         const SizedBox(height: 8),
-        Text(
-          'Play this move to continue. The position will come back soon.',
-          style: SrsText.answerHelp(wide, c.ink2),
-        ),
+        Text(kSrsAnswerHelpText, style: SrsText.answerHelp(wide, c.ink2)),
       ],
     );
   }
@@ -949,7 +957,7 @@ class _NoteSlot extends StatelessWidget {
         children: [
           Text(comment, style: SrsText.note(c.ink)),
           const SizedBox(height: 10),
-          Text('From your study', style: SrsText.noteSource(c.ink3)),
+          Text(kSrsNoteAttribution, style: SrsText.noteSource(c.ink3)),
         ],
       ),
     );

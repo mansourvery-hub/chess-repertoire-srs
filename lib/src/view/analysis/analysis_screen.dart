@@ -1,3 +1,4 @@
+import 'package:chess_srs/src/design/design.dart';
 import 'package:chess_srs/src/model/analysis/analysis_controller.dart';
 import 'package:chess_srs/src/model/analysis/analysis_preferences.dart';
 import 'package:chess_srs/src/model/auth/auth_controller.dart';
@@ -24,6 +25,7 @@ import 'package:chess_srs/src/view/engine/engine_lines.dart';
 import 'package:chess_srs/src/view/explorer/explorer_view.dart';
 import 'package:chess_srs/src/view/game/exported_game_title.dart';
 import 'package:chess_srs/src/view/game/game_common_widgets.dart';
+import 'package:chess_srs/src/view/review/review_copy.dart';
 import 'package:chess_srs/src/view/user/user_or_profile_screen.dart';
 import 'package:chess_srs/src/widgets/adaptive_action_sheet.dart';
 import 'package:chess_srs/src/widgets/adaptive_choice_picker.dart';
@@ -102,14 +104,38 @@ class _AnalysisScreenState extends ConsumerState<_AnalysisScreen> {
         return WakelockWidget(
           child: Scaffold(
             resizeToAvoidBottomInset: false,
-            appBar: AppBar(
-              title: appBarTitle,
-              actions: [_AnalysisMenu(options: widget.options)],
+            // The design's sub-head replaces the Lichess app bar on the Explore scenes
+            // (design/docs/03 §12: "drop Lichess widgets and icons").
+            //
+            // It has no title of its own, so the study or chapter name the app bar carried
+            // becomes a quiet line under it — which is where the demo puts `.scene-title`
+            // on narrow layouts. The overflow menu stays in the trailing slot: it is not
+            // the same menu as the bottom bar's, which carries settings and clear-moves.
+            appBar: SrsSubHead(
+              backLabel: kSrsLibraryLabel,
+              onBack: () => Navigator.of(context).maybePop(),
+              trailing: _AnalysisMenu(options: widget.options),
             ),
-            body: _TabbedBody(
-              options: widget.options,
-              // Move times can only be shown for games played with a clock.
-              showMoveTimes: value.chartClocks.isNotEmpty,
+            body: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                  child: DefaultTextStyle(
+                    style: SrsText.settingLabel(context.srs.ink2),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    child: appBarTitle,
+                  ),
+                ),
+                Expanded(
+                  child: _TabbedBody(
+                    options: widget.options,
+                    // Move times can only be shown for games played with a clock.
+                    showMoveTimes: value.chartClocks.isNotEmpty,
+                  ),
+                ),
+              ],
             ),
           ),
         );

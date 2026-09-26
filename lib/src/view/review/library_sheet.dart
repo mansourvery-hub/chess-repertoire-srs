@@ -6,9 +6,12 @@ import 'dart:math' as math;
 import 'package:chess_srs/src/design/design.dart';
 import 'package:chess_srs/src/model/analysis/analysis_controller.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
+import 'package:chess_srs/src/model/common/id.dart';
 import 'package:chess_srs/src/view/analysis/analysis_screen.dart';
 import 'package:chess_srs/src/view/board_editor/board_editor_screen.dart';
+import 'package:chess_srs/src/view/explorer/opening_explorer_screen.dart';
 import 'package:chess_srs/src/view/review/repertoire_import_dialog.dart';
+import 'package:chess_srs/src/view/review/review_copy.dart';
 import 'package:chess_srs/src/view/review/review_scope_drawer.dart';
 import 'package:chess_srs/src/view/settings/srs_settings_screen.dart';
 import 'package:dartchess/dartchess.dart';
@@ -175,12 +178,30 @@ class SrsLibrarySheet extends ConsumerWidget {
           _buildGroupHeader('Explore', c),
           _buildRow(
             c: c,
-            title: 'Analysis board',
+            title: kSrsAnalysisBoardLabel,
             onTap: () {
               Navigator.pop(context);
               Navigator.of(context, rootNavigator: true).push(
                 AnalysisScreen.buildRoute(
                   const AnalysisOptions.standalone(variant: Variant.standard),
+                ),
+              );
+            },
+          ),
+          _buildRow(
+            c: c,
+            title: kSrsOpeningExplorerLabel,
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.of(context, rootNavigator: true).push(
+                OpeningExplorerScreen.buildRoute(
+                  const AnalysisOptions.pgn(
+                    id: StringId('standalone_opening_explorer'),
+                    orientation: Side.white,
+                    pgn: '',
+                    isComputerAnalysisAllowed: false,
+                    variant: Variant.standard,
+                  ),
                 ),
               );
             },
@@ -205,7 +226,7 @@ class SrsLibrarySheet extends ConsumerWidget {
           _buildGroupHeader('Preferences', c),
           _buildRow(
             c: c,
-            title: 'Settings',
+            title: kSrsSettingsLabel,
             subtitle: 'Review, board, engine, and sound',
             onTap: () {
               Navigator.pop(context);
@@ -217,7 +238,7 @@ class SrsLibrarySheet extends ConsumerWidget {
           ),
           _buildRow(
             c: c,
-            title: 'About and licences',
+            title: kSrsAboutLabel,
             onTap: () {
               Navigator.pop(context);
               showLicensePage(context: context, applicationName: 'Chess Repertoire SRS');

@@ -17,11 +17,11 @@ import 'package:chess_srs/src/model/engine/weights_service.dart';
 import 'package:chess_srs/src/model/notifications/notification_service.dart';
 import 'package:chess_srs/src/model/settings/board_preferences.dart';
 import 'package:chess_srs/src/model/settings/preferences_storage.dart';
+import 'package:chess_srs/src/navigation.dart' show rootNavRouteStackObserver;
 import 'package:chess_srs/src/network/aggregator.dart';
 import 'package:chess_srs/src/network/connectivity.dart';
 import 'package:chess_srs/src/network/http.dart';
 import 'package:chess_srs/src/network/socket.dart';
-import 'package:chess_srs/src/tab_navigation.dart' show rootNavRouteStackObserver;
 import 'package:chess_srs/src/utils/riverpod.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -64,26 +64,35 @@ final offlineClient = MockClient((request) {
 /// The [overrides] parameter can be used to override any provider in the app.
 /// The [authUser] parameter can be used to set the initial user authUser state.
 /// The [defaultPreferences] parameter can be used to set the initial shared preferences.
+///
+/// [brightness] pins the surface palette as well as the platform brightness, so code that
+/// resolves its theme from the platform and code that reads `context.srs` agree. It defaults
+/// to light, which is what every test that did not care was already getting.
 Future<Widget> makeTestProviderScopeApp(
   WidgetTester tester, {
   required Widget home,
   Map<ProviderOrFamily, Override>? overrides,
   AuthUser? authUser,
   Map<String, Object>? defaultPreferences,
+  Size surfaceSize = kTestSurfaceSize,
+  Brightness brightness = Brightness.light,
 }) {
   return makeTestProviderScope(
     tester,
-    child: _FakeApp(home: home),
+    child: _FakeApp(home: home, brightness: brightness),
     overrides: overrides,
     authUser: authUser,
     defaultPreferences: defaultPreferences,
+    surfaceSize: surfaceSize,
+    brightness: brightness,
   );
 }
 
 class _FakeApp extends ConsumerStatefulWidget {
-  const _FakeApp({required this.home});
+  const _FakeApp({required this.home, this.brightness = Brightness.light});
 
   final Widget home;
+  final Brightness brightness;
 
   @override
   ConsumerState<_FakeApp> createState() => _FakeAppState();
@@ -100,7 +109,7 @@ class _FakeAppState extends ConsumerState<_FakeApp> {
   @override
   Widget build(BuildContext context) {
     return SrsTheme(
-      colors: SrsColors.forBrightness(Brightness.light, kSrsDefaultAccent),
+      colors: SrsColors.forBrightness(widget.brightness, kSrsDefaultAccent),
       child: MaterialApp(
         // Mirror production (see app.dart): [AppLocalizations.localizationsDelegates] would pull in
         // the `flutter_localizations` delegates, which localize the Flutter material and cupertino
@@ -161,10 +170,17 @@ Future<Widget> makeTestProviderScope(
   Map<String, Object>? defaultPreferences,
   Size surfaceSize = kTestSurfaceSize,
   Key? key,
+  Brightness brightness = Brightness.light,
 }) async {
   final binding = TestLichessBinding.ensureInitialized();
 
   addTearDown(binding.reset);
+
+  // The app resolves BackgroundThemeMode.system against MediaQuery.platformBrightnessOf, so
+  // pinning the surface palette without this leaves the two disagreeing — the Theme row
+  // would report dark while everything around it rendered light.
+  tester.platformDispatcher.platformBrightnessTestValue = brightness;
+  addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
 
   rootNavRouteStackObserver.clear();
   addTearDown(rootNavRouteStackObserver.clear);

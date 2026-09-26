@@ -11,7 +11,7 @@ import 'package:chess_srs/src/model/settings/preferences_storage.dart';
 import 'package:chess_srs/src/model/user/user.dart';
 import 'package:chess_srs/src/network/http.dart';
 import 'package:chess_srs/src/view/explorer/opening_explorer_screen.dart';
-import 'package:chess_srs/src/view/more/more_tab_screen.dart';
+import 'package:chess_srs/src/view/review/review_copy.dart';
 import 'package:chess_srs/src/widgets/move_list.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +22,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../network/fake_http_client_factory.dart';
 import '../../test_helpers.dart';
 import '../../test_provider_scope.dart';
+import '../library_launcher.dart';
 
 void main() {
   // final explorerViewFinder = find.descendant(
@@ -237,7 +238,7 @@ void main() {
     testWidgets('opening explorer does not use standalone analysis', (WidgetTester tester) async {
       final app = await makeTestProviderScopeApp(
         tester,
-        home: const MoreTabScreen(),
+        home: const LibraryLauncher(),
         overrides: {
           httpClientFactoryProvider: httpClientFactoryProvider.overrideWith((ref) {
             return FakeHttpClientFactory(() => mockClient);
@@ -247,18 +248,18 @@ void main() {
       );
       await tester.pumpWidget(app);
 
-      await tester.tap(find.text('Analysis board'));
-      await tester.pumpAndSettle(); // wait for analysis screen to open
+      await openLibraryRow(tester, kSrsAnalysisBoardLabel);
 
       await playMove(tester, 'e2', 'e4');
       expect(boardHasPiece(tester, Square.e4, Piece.whitePawn), isTrue);
 
-      // Go back to "more" screen and open opening explorer
-      await tester.pageBack();
-      await tester.pump();
+      // Leave the scene via its sub-head and open the explorer from the library. The
+      // design replaces the platform back button with SrsSubHead's own labelled
+      // affordance, so pageBack() (which only knows the Material/Cupertino one) cannot
+      // find it.
+      await goBackToLibrary(tester);
 
-      await tester.tap(find.text('Opening explorer'));
-      await tester.pumpAndSettle(); // wait for opening explorer screen to open
+      await openLibraryRow(tester, kSrsOpeningExplorerLabel);
 
       // Should not use saved standalone analysis here
       expect(boardHasPiece(tester, Square.e2, Piece.whitePawn), isTrue);

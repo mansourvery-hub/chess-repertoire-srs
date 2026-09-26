@@ -17,7 +17,7 @@ import 'package:chess_srs/src/view/analysis/analysis_screen.dart';
 import 'package:chess_srs/src/view/engine/engine_button.dart';
 import 'package:chess_srs/src/view/engine/engine_gauge.dart';
 import 'package:chess_srs/src/view/engine/engine_lines.dart';
-import 'package:chess_srs/src/view/more/more_tab_screen.dart';
+import 'package:chess_srs/src/view/review/review_copy.dart';
 import 'package:chess_srs/src/widgets/bottom_bar.dart';
 import 'package:chess_srs/src/widgets/move_times_chart.dart';
 import 'package:chess_srs/src/widgets/pgn.dart';
@@ -35,6 +35,7 @@ import '../../network/fake_websocket_channel.dart';
 import '../../test_helpers.dart';
 import '../../test_provider_scope.dart';
 import '../engine/test_engine_app.dart';
+import '../library_launcher.dart';
 
 void main() {
   // ignore: avoid_dynamic_calls
@@ -1406,7 +1407,7 @@ void main() {
       // open from More tab and navigate to board analysis
       final app = await makeTestProviderScopeApp(
         tester,
-        home: const MoreTabScreen(),
+        home: const LibraryLauncher(),
         defaultPreferences: {
           PrefCategory.engineEvaluation.storageKey: jsonEncode(
             EngineEvaluationPrefState.defaults.copyWith(isEnabled: false).toJson(),
@@ -1416,9 +1417,7 @@ void main() {
 
       await tester.pumpWidget(app);
 
-      // Tap on "Analysis" button in More tab
-      await tester.tap(find.text('Analysis board'));
-      await tester.pumpAndSettle();
+      await openLibraryRow(tester, kSrsAnalysisBoardLabel);
 
       // Change variant to Racing Kings to verify that variant is also saved/restored correctly
       await tester.tap(find.bySemanticsLabel('Menu'));
@@ -1448,16 +1447,15 @@ void main() {
       expect(boardHasPiece(tester, Square.a3, Piece.blackKing), isTrue);
       expect(boardHasPiece(tester, Square.g3, Piece.whiteKing), isFalse);
 
-      // Navigate back to More tab
-      await tester.pageBack();
-      await tester.pumpAndSettle();
+      // Leave the scene via its sub-head. The design replaces the platform back button with
+      // SrsSubHead's own labelled affordance, so pageBack() (which only knows the
+      // Material/Cupertino one) cannot find it.
+      await goBackToLibrary(tester);
 
-      // Verify we're back at More tab
-      expect(find.text('Tools'), findsOneWidget);
+      expect(find.text('Open library'), findsOneWidget);
 
       // Navigate to board analysis again
-      await tester.tap(find.text('Analysis board'));
-      await tester.pumpAndSettle();
+      await openLibraryRow(tester, kSrsAnalysisBoardLabel);
 
       // Verify moves are still present and session was restored
       expect(find.textContaining('Nd4'), findsOneWidget);
@@ -1473,7 +1471,7 @@ void main() {
       // Open from More tab and navigate to board analysis
       final app = await makeTestProviderScopeApp(
         tester,
-        home: const MoreTabScreen(),
+        home: const LibraryLauncher(),
         defaultPreferences: {
           PrefCategory.engineEvaluation.storageKey: jsonEncode(
             EngineEvaluationPrefState.defaults.copyWith(isEnabled: false).toJson(),
@@ -1484,8 +1482,7 @@ void main() {
       await tester.pumpWidget(app);
 
       // Open analysis board
-      await tester.tap(find.text('Analysis board'));
-      await tester.pumpAndSettle();
+      await openLibraryRow(tester, kSrsAnalysisBoardLabel);
 
       // Make some moves
       await playMove(tester, 'e2', 'e4');
@@ -1509,16 +1506,15 @@ void main() {
       expect(find.textContaining('e4'), findsNothing);
       expect(boardHasPiece(tester, Square.e4, Piece.whitePawn), isFalse);
 
-      // Navigate back to More tab
-      await tester.pageBack();
-      await tester.pumpAndSettle();
+      // Leave the scene via its sub-head. The design replaces the platform back button with
+      // SrsSubHead's own labelled affordance, so pageBack() (which only knows the
+      // Material/Cupertino one) cannot find it.
+      await goBackToLibrary(tester);
 
-      // Verify we're back at More tab
-      expect(find.text('Tools'), findsOneWidget);
+      expect(find.text('Open library'), findsOneWidget);
 
       // Navigate to board analysis again
-      await tester.tap(find.text('Analysis board'));
-      await tester.pumpAndSettle();
+      await openLibraryRow(tester, kSrsAnalysisBoardLabel);
 
       // Verify moves are no longer present and analysis was cleared
       expect(find.textContaining('e4'), findsNothing);
@@ -1531,7 +1527,7 @@ void main() {
       // Open from More tab and navigate to board analysis
       final app = await makeTestProviderScopeApp(
         tester,
-        home: const MoreTabScreen(),
+        home: const LibraryLauncher(),
         defaultPreferences: {
           PrefCategory.engineEvaluation.storageKey: jsonEncode(
             EngineEvaluationPrefState.defaults.copyWith(isEnabled: false).toJson(),
@@ -1542,8 +1538,7 @@ void main() {
       await tester.pumpWidget(app);
 
       // Open analysis board
-      await tester.tap(find.text('Analysis board'));
-      await tester.pumpAndSettle();
+      await openLibraryRow(tester, kSrsAnalysisBoardLabel);
 
       // Make some moves
       await playMove(tester, 'e2', 'e4');
@@ -1554,16 +1549,15 @@ void main() {
       expect(find.textContaining('f4'), findsOneWidget);
       expect(boardHasPiece(tester, Square.f4, Piece.whitePawn), isTrue);
 
-      // Navigate back to More tab
-      await tester.pageBack();
-      await tester.pumpAndSettle();
+      // Leave the scene via its sub-head. The design replaces the platform back button with
+      // SrsSubHead's own labelled affordance, so pageBack() (which only knows the
+      // Material/Cupertino one) cannot find it.
+      await goBackToLibrary(tester);
 
-      // Verify we're back at More tab
-      expect(find.text('Tools'), findsOneWidget);
+      expect(find.text('Open library'), findsOneWidget);
 
       // Navigate to board editor
-      await tester.tap(find.text('Board editor'));
-      await tester.pumpAndSettle();
+      await openLibraryRow(tester, kSrsBoardEditorLabel);
 
       //make moves that result in a different position than the previous analysis
       await dragFromTo(tester, 'd2', 'd4');
