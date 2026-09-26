@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:chess_srs/l10n/l10n.dart';
 import 'package:chess_srs/src/app.dart';
 import 'package:chess_srs/src/model/auth/auth_controller.dart';
+import 'package:chess_srs/src/model/common/preloaded_data.dart';
 import 'package:chess_srs/src/model/settings/general_preferences.dart';
 import 'package:chess_srs/src/model/settings/preferences_storage.dart';
 import 'package:chess_srs/src/network/http.dart';
@@ -87,27 +88,42 @@ void main() {
 
     // Both the startup token check and the 401 handling that follows are fire-and-forget
     // requests rather than anything tied to a frame, so pumpAndSettle has no relationship to
-    // them: it returns once animations stop scheduling frames, and its duration is the gap
-    // between pumps rather than a total wait. That made this test depend on machine speed —
-    // it passed on a fast one and failed on a slower runner with the request never sent.
-    // Wait for the condition itself, bounded so a real regression still fails rather than
-    // hanging. The loops exit as soon as the condition holds, so the common case is one pass.
-    for (var i = 0; i < 100 && tokenTestRequests == 0; i++) {
-      await tester.pump(const Duration(milliseconds: 50));
-    }
+    // them. Waiting by pumping advances *fake* time, while the work being waited for — a request
+    // issued from a provider build that first awaits several platform channels — only advances on
+    // the real event loop, so a pump loop is a bet on how much of that a machine got through.
+    // That is the whole of the "passes here, fails on the runner" behaviour: with the missing
+    // plugin mock fixed, the runner reports `Expected: <1> Actual: <0>` here, and only here.
+    //
+    // Waiting on the real loop keeps the same 5s bound, so a real regression still fails rather
+    // than hanging, and both loops exit as soon as their condition holds.
+    final container = ProviderScope.containerOf(tester.element(find.byType(Application)));
+
+    await tester.runAsync(() async {
+      for (var i = 0; i < 100 && tokenTestRequests == 0; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    });
+
+    // The request can only be made if the stored token was read back, so assert that first.
+    // Otherwise a failure reports a bare zero and gives no clue which half broke — which is
+    // exactly what the original diagnostic run could not establish.
+    final preloaded = await container.read(preloadedDataProvider.future);
+    expect(
+      preloaded.authUser,
+      isNotNull,
+      reason: 'the seeded token was never read back, so no token check was attempted',
+    );
 
     // should have made a request to test the token
     expect(tokenTestRequests, 1);
 
-    final container = ProviderScope.containerOf(tester.element(find.byType(Application)));
-
     // The stale login is cleared once the 401 has been handled, which lands after the token
     // check above.
-    if (container.read(authControllerProvider) != null) {
+    await tester.runAsync(() async {
       for (var i = 0; i < 100 && container.read(authControllerProvider) != null; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
       }
-    }
+    });
 
     // authUser is not active anymore
     expect(container.read(authControllerProvider), isNull);
