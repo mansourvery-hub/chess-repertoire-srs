@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'package:chess_srs/l10n/l10n.dart';
 import 'package:chess_srs/src/app.dart';
 import 'package:chess_srs/src/model/auth/auth_controller.dart';
+import 'package:chess_srs/src/model/auth/auth_storage.dart';
 import 'package:chess_srs/src/model/settings/general_preferences.dart';
 import 'package:chess_srs/src/model/settings/preferences_storage.dart';
 import 'package:chess_srs/src/network/http.dart';
 import 'package:chess_srs/src/view/review/review_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:material_ui/material_ui.dart';
@@ -41,7 +43,9 @@ void main() {
     tester,
   ) async {
     int tokenTestRequests = 0;
+    int accountRequests = 0;
     final mockClient = MockClient((request) {
+      if (request.url.path == '/api/account') accountRequests++;
       if (request.url.path == '/api/token/test') {
         tokenTestRequests++;
         return mockResponse('''
@@ -81,6 +85,15 @@ void main() {
     for (var i = 0; i < 100 && tokenTestRequests == 0; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
+
+    // TEMPORARY DIAGNOSTIC — remove once the cause is known.
+    final secureKeys = await const FlutterSecureStorage().readAll();
+    // ignore: avoid_print
+    print('DIAG secureKeys=${secureKeys.keys.toList()}');
+    // ignore: avoid_print
+    print('DIAG authRead=${(await const AuthStorage().read())?.token}');
+    // ignore: avoid_print
+    print('DIAG tokenTest=$tokenTestRequests account=$accountRequests');
 
     // should have made a request to test the token
     expect(tokenTestRequests, 1);
