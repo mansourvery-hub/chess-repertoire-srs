@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:chess_srs/src/design/design.dart';
 import 'package:chess_srs/src/model/analysis/analysis_controller.dart';
 import 'package:chess_srs/src/model/analysis/analysis_preferences.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
@@ -909,7 +910,7 @@ void main() {
           (tester) async {
             await makeEngineTestApp(tester, gameId: const GameId('xze7RH66'));
 
-            expect(find.byType(CircularProgressIndicator), findsOne);
+            expect(find.text('Loading…'), findsOne);
             // wait for the game to be loaded
             await tester.pump(const Duration(milliseconds: 50));
 
@@ -927,7 +928,7 @@ void main() {
               gameId: const GameId('xze7RH66'),
             );
 
-            expect(find.byType(CircularProgressIndicator), findsOne);
+            expect(find.text('Loading…'), findsOne);
             // wait for the game to be loaded
             await tester.pump(const Duration(milliseconds: 50));
 
@@ -1180,7 +1181,7 @@ void main() {
         ) async {
           await makeEngineTestApp(tester, isEngineEnabled: false, gameId: const GameId('xze7RH66'));
 
-          expect(find.byType(CircularProgressIndicator), findsOne);
+          expect(find.text('Loading…'), findsOne);
           // wait for the game to be loaded
           await tester.pump(const Duration(milliseconds: 50));
 
@@ -1449,7 +1450,9 @@ void main() {
       expect(boardHasPiece(tester, Square.g3, Piece.whiteKing), isFalse);
 
       // Navigate back to More tab
-      await tester.pageBack();
+      await tester.tap(
+        find.descendant(of: find.byType(SrsPageHead), matching: find.text('Review')),
+      );
       await tester.pumpAndSettle();
 
       // Verify we're back at More tab
@@ -1510,7 +1513,9 @@ void main() {
       expect(boardHasPiece(tester, Square.e4, Piece.whitePawn), isFalse);
 
       // Navigate back to More tab
-      await tester.pageBack();
+      await tester.tap(
+        find.descendant(of: find.byType(SrsPageHead), matching: find.text('Review')),
+      );
       await tester.pumpAndSettle();
 
       // Verify we're back at More tab
@@ -1555,7 +1560,9 @@ void main() {
       expect(boardHasPiece(tester, Square.f4, Piece.whitePawn), isTrue);
 
       // Navigate back to More tab
-      await tester.pageBack();
+      await tester.tap(
+        find.descendant(of: find.byType(SrsPageHead), matching: find.text('Review')),
+      );
       await tester.pumpAndSettle();
 
       // Verify we're back at More tab

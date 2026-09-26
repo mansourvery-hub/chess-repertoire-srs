@@ -1,3 +1,4 @@
+import 'package:chess_srs/src/design/design.dart';
 import 'package:chess_srs/src/model/analysis/analysis_controller.dart';
 import 'package:chess_srs/src/model/analysis/analysis_preferences.dart';
 import 'package:chess_srs/src/model/auth/auth_controller.dart';
@@ -36,6 +37,7 @@ import 'package:chess_srs/src/widgets/user.dart';
 import 'package:chess_srs/src/widgets/variant_app_bar_title.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:material_ui/material_ui.dart';
@@ -72,6 +74,7 @@ class _AnalysisScreenState extends ConsumerState<_AnalysisScreen> {
   Widget build(BuildContext context) {
     final ctrlProvider = analysisControllerProvider(widget.options);
     final asyncState = ref.watch(ctrlProvider);
+    final c = context.srs;
 
     switch (asyncState) {
       case AsyncData(:final value):
@@ -99,28 +102,123 @@ class _AnalysisScreenState extends ConsumerState<_AnalysisScreen> {
                     )
                   : VariantAppBarTitle(variant: value.variant, title: context.l10n.analysis));
 
+        // Quiet scene-title line under the header (demo meta treatment).
+        // The full title widget is preserved when there is no plain name.
+        final Widget titleLine = displayTitle != null
+            ? Text(
+                displayTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: SrsText.meta(c.ink2),
+              )
+            : appBarTitle;
+
         return WakelockWidget(
           child: Scaffold(
             resizeToAvoidBottomInset: false,
-            appBar: AppBar(
-              title: appBarTitle,
-              actions: [_AnalysisMenu(options: widget.options)],
-            ),
-            body: _TabbedBody(
-              options: widget.options,
-              // Move times can only be shown for games played with a clock.
-              showMoveTimes: value.chartClocks.isNotEmpty,
+            backgroundColor: c.ground,
+            body: SafeArea(
+              child: Column(
+                children: [
+                  SrsPageHead(
+                    label: 'Review',
+                    onBack: () => Navigator.of(context).pop(),
+                    trailing: _AnalysisMenu(options: widget.options),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 2, 24, 8),
+                      child: titleLine,
+                    ),
+                  ),
+                  Expanded(
+                    child: _TabbedBody(
+                      options: widget.options,
+                      // Move times can only be shown for games played with a clock.
+                      showMoveTimes: value.chartClocks.isNotEmpty,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
       case AsyncError(:final error, :final stackTrace):
         _logger.severe('Cannot load analysis:', error, stackTrace);
-        return FullScreenRetryRequest(onRetry: () => ref.invalidate(ctrlProvider));
+        return Scaffold(
+          resizeToAvoidBottomInset: false,
+          backgroundColor: c.ground,
+          body: SafeArea(
+            child: Column(
+              children: [
+                SrsPageHead(label: 'Review', onBack: () => Navigator.of(context).pop()),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 36),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('Something went wrong.', style: SrsText.title(c.ink)),
+                            const SizedBox(height: 12),
+                            Text(
+                              '$error',
+                              style: TextStyle(
+                                fontFamily: SrsText.ui,
+                                fontSize: 15,
+                                height: 1.45,
+                                color: c.ink2,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            Wrap(
+                              spacing: 18.0,
+                              runSpacing: 10.0,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                SrsPillButton(
+                                  label: 'Try again',
+                                  onPressed: () => ref.invalidate(ctrlProvider),
+                                ),
+                                SrsTextButton(
+                                  label: 'Copy details',
+                                  onPressed: () => Clipboard.setData(ClipboardData(text: '$error')),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
       case _:
         return Scaffold(
           resizeToAvoidBottomInset: false,
-          appBar: AppBar(title: const ExportedGameTitleLoading()),
-          body: const Center(child: CircularProgressIndicator.adaptive()),
+          backgroundColor: c.ground,
+          body: SafeArea(
+            child: Column(
+              children: [
+                SrsPageHead(label: 'Review', onBack: () => Navigator.of(context).pop()),
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      'Loading…',
+                      style: TextStyle(fontFamily: SrsText.ui, fontSize: 15, color: c.ink2),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
     }
   }
