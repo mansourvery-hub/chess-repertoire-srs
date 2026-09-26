@@ -54,8 +54,96 @@ Uri lichessUri(String unencodedPath, [Map<String, dynamic>? queryParameters]) =>
     ? Uri.http(kLichessHost, unencodedPath, queryParameters)
     : Uri.https(kLichessHost, unencodedPath, queryParameters);
 
-/// The host of the lichess main server, without the port part.
+/// Stands in for a value that must not appear in a log.
+const kRedactedLogValue = '***';
+
+/// Query parameters whose value is a credential or a personal identifier.
 ///
+/// This is a denylist rather than an allowlist on purpose. Its opposite — allowlisting the
+/// parameters known to be safe — fails quietly and in the direction nobody notices: a
+/// parameter added later is blanked, the log gets less informative exactly when a new feature
+/// is being debugged, and no test fails. A denylist keeps the log useful, and the risk of a new
+/// secret-bearing parameter is handled where it can be seen: [test/network/http_redaction_test.dart]
+/// fails if a query parameter is used anywhere in the app without being classified here. So a
+/// credential can only be added by someone who is told to classify it.
+///
+/// Add a name when a credential is put in a query string, not when an ordinary parameter is.
+const Set<String> kSensitiveQueryParameters = {
+  'code', // one-time login code
+  'email', // personal identifier
+  'otp',
+  'password',
+  'secret',
+  'sessionid',
+  'token',
+  'username', // personal identifier
+};
+
+/// Path prefixes whose following segment is a credential, with the reason.
+///
+/// Matched by prefix rather than by guessing "long opaque segment", which would mangle ordinary
+/// paths and make the log useless for the case it exists to serve.
+const Map<String, String> kSecretBearingPathPrefixes = {
+  '/mobile/register/firebase': 'the FCM registration token, a long-lived device credential',
+};
+
+/// Returns [uri] with anything that must not be logged replaced by [kRedactedLogValue].
+///
+/// Applied on the way *into* storage and logging, never to the request that is sent: the client
+/// has to deliver the real one-time code and the real token, so redacting at the source would
+/// break sign-in. What is stored is what has to be safe.
+///
+/// Only the secret parts are replaced. The path, the remaining parameters and the host are left
+/// alone, because "which request was made, and what came back" is the whole diagnostic value of
+/// the log.
+Uri redactUriForLogging(Uri uri) {
+  var segments = uri.pathSegments;
+
+  for (final entry in kSecretBearingPathPrefixes.entries) {
+    final prefixSegments = entry.key.split('/').where((s) => s.isNotEmpty).toList();
+    if (segments.length > prefixSegments.length && _startsWith(segments, prefixSegments)) {
+      segments = [
+        ...segments.take(prefixSegments.length),
+        kRedactedLogValue,
+        ...segments.skip(prefixSegments.length + 1),
+      ];
+      break;
+    }
+  }
+
+  var changed = !_sameSegments(segments, uri.pathSegments);
+
+  final parameters = <String, dynamic>{...uri.queryParameters};
+  parameters.forEach((name, value) {
+    if (kSensitiveQueryParameters.contains(name.toLowerCase()) && value != kRedactedLogValue) {
+      parameters[name] = kRedactedLogValue;
+      changed = true;
+    }
+  });
+
+  if (!changed) return uri;
+  return uri.replace(
+    pathSegments: segments,
+    queryParameters: parameters.isEmpty ? null : parameters,
+  );
+}
+
+bool _startsWith(List<String> segments, List<String> prefix) {
+  for (var i = 0; i < prefix.length; i++) {
+    if (segments[i] != prefix[i]) return false;
+  }
+  return true;
+}
+
+bool _sameSegments(List<String> a, List<String> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
+/// The host of the lichess main server, without the port part.
 /// Other lichess services, such as the opening explorer, the tablebase or the
 /// CDN, are served by different hosts.
 final _lichessMainHost = lichessUri('/').host;
@@ -112,7 +200,7 @@ final httpClientFactoryProvider = Provider<HttpClientFactory>((Ref ref) {
             httpLogId: request.hashCode.toString(),
             requestDateTime: DateTime.now(),
             requestMethod: request.method,
-            requestUrl: request.url,
+            requestUrl: redactUriForLogging(request.url),
           ),
         );
       },
@@ -454,7 +542,7 @@ class LichessClient implements Client {
 
     _logger.log(
       quiet ? Level.FINEST : Level.INFO,
-      '${request.method} ${request.url} ${request.headers['User-Agent']}',
+      '${request.method} ${redactUriForLogging(request.url)} ${request.headers['User-Agent']}',
     );
 
     try {
@@ -475,7 +563,12 @@ class LichessClient implements Client {
 
       return response;
     } catch (e, st) {
-      _logger.log(quiet ? Level.FINEST : Level.WARNING, 'Request to ${request.url} failed:', e, st);
+      _logger.log(
+        quiet ? Level.FINEST : Level.WARNING,
+        'Request to ${redactUriForLogging(request.url)} failed:',
+        e,
+        st,
+      );
       rethrow;
     }
   }
@@ -484,7 +577,7 @@ class LichessClient implements Client {
     if (response.request != null && response.statusCode >= 400) {
       final request = response.request!;
       final method = request.method;
-      final url = request.url;
+      final url = redactUriForLogging(request.url);
       _logger.log(
         quiet ? Level.FINEST : Level.WARNING,
         '$method $url responded with status ${response.statusCode} ${response.reasonPhrase}',
@@ -596,7 +689,7 @@ class DefaultClient implements Client {
 
     _logger.log(
       quiet ? Level.FINEST : Level.INFO,
-      '${request.method} ${request.url} ${request.headers['User-Agent']}',
+      '${request.method} ${redactUriForLogging(request.url)} ${request.headers['User-Agent']}',
     );
 
     try {
@@ -606,7 +699,12 @@ class DefaultClient implements Client {
 
       return response;
     } catch (e, st) {
-      _logger.log(quiet ? Level.FINEST : Level.WARNING, 'Request to ${request.url} failed:', e, st);
+      _logger.log(
+        quiet ? Level.FINEST : Level.WARNING,
+        'Request to ${redactUriForLogging(request.url)} failed:',
+        e,
+        st,
+      );
       rethrow;
     }
   }
@@ -615,7 +713,7 @@ class DefaultClient implements Client {
     if (response.request != null && response.statusCode >= 400) {
       final request = response.request!;
       final method = request.method;
-      final url = request.url;
+      final url = redactUriForLogging(request.url);
       _logger.log(
         quiet ? Level.FINEST : Level.WARNING,
         '$method $url responded with status ${response.statusCode} ${response.reasonPhrase}',

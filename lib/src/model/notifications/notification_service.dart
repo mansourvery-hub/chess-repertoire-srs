@@ -462,7 +462,11 @@ class NotificationService {
     if (settings.authorizationStatus == AuthorizationStatus.denied) {
       return false;
     }
-    _logger.info('will register fcmToken: $token');
+    // The token itself is not logged. It is a long-lived device credential, this record reaches
+    // `app_log` and is readable in Settings → app logs, and "registering an FCM token" carries
+    // the same diagnostic value without the secret in it. The request that follows puts the token
+    // in its URL; that is unavoidable, and the request logger redacts it on the way to storage.
+    _logger.info('registering an FCM token');
     final authUser = _ref.read(authControllerProvider);
     if (authUser == null) {
       return false;
