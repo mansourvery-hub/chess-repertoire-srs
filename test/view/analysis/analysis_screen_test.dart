@@ -19,7 +19,6 @@ import 'package:chess_srs/src/view/engine/engine_button.dart';
 import 'package:chess_srs/src/view/engine/engine_gauge.dart';
 import 'package:chess_srs/src/view/engine/engine_lines.dart';
 import 'package:chess_srs/src/view/more/more_tab_screen.dart';
-import 'package:chess_srs/src/widgets/bottom_bar.dart';
 import 'package:chess_srs/src/widgets/move_times_chart.dart';
 import 'package:chess_srs/src/widgets/pgn.dart';
 import 'package:chess_srs/src/widgets/pockets.dart';
@@ -90,17 +89,21 @@ void main() {
       await tester.pumpWidget(app);
 
       // cannot go forward
-      expect(tester.widget<BottomBarButton>(find.byKey(const Key('goto-next'))).onTap, isNull);
+      expect(tester.widget<SrsTextButton>(find.byKey(const Key('goto-next'))).onPressed, isNull);
 
       // can go back
       expect(
-        tester.widget<BottomBarButton>(find.byKey(const Key('goto-previous'))).onTap,
+        tester.widget<SrsTextButton>(find.byKey(const Key('goto-previous'))).onPressed,
         isNotNull,
       );
 
       // goto previous move
       await tester.tap(find.byKey(const Key('goto-previous')));
       await tester.pumpAndSettle();
+      // The tree view debounces path changes (kFastReplayDebounceDelay);
+      // pump it explicitly: the old bar's long splash animation used to
+      // advance fake time past the delay by accident.
+      await tester.pump(kFastReplayDebounceDelay);
 
       final currentMove = find.textContaining('Kc1');
       expect(currentMove, findsOneWidget);
@@ -1500,13 +1503,16 @@ void main() {
       expect(boardHasPiece(tester, Square.f4, Piece.whitePawn), isTrue);
 
       //open menu
-      await tester.tap(find.byIcon(Icons.menu));
+      await tester.tap(find.text('Menu'));
       await tester.pump();
 
       //tap Clear moves
       expect(find.text('Clear moves'), findsOneWidget);
       await tester.tap(find.text('Clear moves'));
       await tester.pump();
+
+      // The tree view debounces path changes; let it apply before asserting.
+      await tester.pump(kFastReplayDebounceDelay);
 
       //verify moves are cleared
       expect(find.textContaining('e4'), findsNothing);

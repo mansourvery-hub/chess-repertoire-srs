@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:chess_srs/src/design/design.dart';
 import 'package:chess_srs/src/model/analysis/analysis_controller.dart';
 import 'package:chess_srs/src/model/analysis/analysis_preferences.dart';
 import 'package:chess_srs/src/model/auth/auth_controller.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
 import 'package:chess_srs/src/model/engine/evaluation_preferences.dart';
+import 'package:chess_srs/src/model/engine/position_evaluator.dart';
 import 'package:chess_srs/src/model/game/player.dart';
 import 'package:chess_srs/src/utils/focus_detector.dart';
 import 'package:chess_srs/src/utils/immersive_mode.dart';
@@ -28,14 +31,12 @@ import 'package:chess_srs/src/view/game/game_common_widgets.dart';
 import 'package:chess_srs/src/view/user/user_or_profile_screen.dart';
 import 'package:chess_srs/src/widgets/adaptive_action_sheet.dart';
 import 'package:chess_srs/src/widgets/adaptive_choice_picker.dart';
-import 'package:chess_srs/src/widgets/bottom_bar.dart';
 import 'package:chess_srs/src/widgets/buttons.dart';
 import 'package:chess_srs/src/widgets/feedback.dart';
 import 'package:chess_srs/src/widgets/move_times_chart.dart';
 import 'package:chess_srs/src/widgets/platform_context_menu_button.dart';
 import 'package:chess_srs/src/widgets/user.dart';
 import 'package:chess_srs/src/widgets/variant_app_bar_title.dart';
-import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -472,70 +473,104 @@ class _BottomBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final ctrlProvider = analysisControllerProvider(options);
     final analysisState = ref.watch(ctrlProvider).requireValue;
+    final evalPrefs = ref.watch(engineEvaluationPreferencesProvider);
+    final c = context.srs;
+    final notifier = ref.read(ctrlProvider.notifier);
 
-    return BottomBar(
-      children: [
-        BottomBarButton(
-          label: context.l10n.menu,
-          onTap: () {
-            _showAnalysisMenu(context, ref);
-          },
-          icon: Icons.menu,
-        ),
-        BottomBarButton(
-          label: context.l10n.flipBoard,
-          onTap: () => ref.read(ctrlProvider.notifier).toggleBoard(),
-          icon: CupertinoIcons.arrow_2_squarepath,
-        ),
-        if (analysisState.isComputerAnalysisAllowed)
-          Builder(
-            builder: (context) {
-              Future<void>? toggleFuture;
-              return FutureBuilder(
-                future: toggleFuture,
-                builder: (context, snapshot) {
-                  return EngineButton(
-                    filters: (
-                      context: analysisState.evaluationContext,
-                      path: analysisState.currentPath,
-                    ),
-                    savedEval: analysisState.currentNode.eval,
-                    onTap:
-                        analysisState.isEngineAllowed &&
-                            snapshot.connectionState != ConnectionState.waiting
-                        ? () async {
-                            toggleFuture = ref.read(ctrlProvider.notifier).toggleEngine();
-                            try {
-                              await toggleFuture;
-                            } finally {
-                              toggleFuture = null;
+    Widget? engineRow;
+    if (analysisState.isComputerAnalysisAllowed) {
+      final filters = (context: analysisState.evaluationContext, path: analysisState.currentPath);
+      final EngineEvaluationState(:isComputing, currentWork: work) = ref.watch(
+        engineEvaluationProvider(filters),
+      );
+      final canGoDeeper = !isComputing && (work == null || work.isDeeper != true);
+      engineRow = Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+        child: Row(
+          children: [
+            Text('Engine', style: SrsText.settingLabel(c.ink)),
+            const SizedBox(width: 10),
+            Builder(
+              builder: (context) {
+                Future<void>? toggleFuture;
+                return FutureBuilder(
+                  future: toggleFuture,
+                  builder: (context, snapshot) {
+                    return EngineButton(
+                      filters: filters,
+                      savedEval: analysisState.currentNode.eval,
+                      onTap:
+                          analysisState.isEngineAllowed &&
+                              snapshot.connectionState != ConnectionState.waiting
+                          ? () async {
+                              toggleFuture = ref.read(ctrlProvider.notifier).toggleEngine();
+                              try {
+                                await toggleFuture;
+                              } finally {
+                                toggleFuture = null;
+                              }
                             }
-                          }
-                        : null,
-                    goDeeper: () => ref.read(ctrlProvider.notifier).requestEval(goDeeper: true),
-                  );
-                },
-              );
-            },
-          ),
-        RepeatButton(
-          onLongPress: analysisState.canGoBack ? () => _moveBackward(ref, fastSeek: true) : null,
-          child: BottomBarButton(
-            key: const ValueKey('goto-previous'),
-            onTap: analysisState.canGoBack ? () => _moveBackward(ref) : null,
-            label: 'Previous',
-            icon: CupertinoIcons.chevron_back,
-            showTooltip: false,
-          ),
+                          : null,
+                      goDeeper: () => ref.read(ctrlProvider.notifier).requestEval(goDeeper: true),
+                    );
+                  },
+                );
+              },
+            ),
+            const Spacer(),
+            if (canGoDeeper)
+              SrsTextButton(
+                label: context.l10n.goDeeper,
+                onPressed: () => notifier.requestEval(goDeeper: true),
+              ),
+            SrsSwitch(
+              value: evalPrefs.isEnabled,
+              semanticLabel: context.l10n.toggleLocalEvaluation,
+              onChanged: analysisState.isEngineAllowed
+                  ? (_) => unawaited(notifier.toggleEngine())
+                  : null,
+            ),
+          ],
         ),
-        RepeatButton(
-          onLongPress: analysisState.canGoNext ? () => _moveForward(ref, fastSeek: true) : null,
-          child: BottomBarButton(
-            key: const ValueKey('goto-next'),
-            icon: CupertinoIcons.chevron_forward,
-            label: context.l10n.next,
-            onTap: analysisState.canGoNext ? () => _moveForward(ref) : null,
-            showTooltip: false,
+      );
+    }
+
+    // Diagram actions replacing the legacy bottom bar: same features,
+    // plain text buttons. Menu/Flip/Back/Forward all survive the move.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ?engineRow,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
+          child: Row(
+            children: [
+              RepeatButton(
+                onLongPress: analysisState.canGoBack
+                    ? () => _moveBackward(ref, fastSeek: true)
+                    : null,
+                child: SrsTextButton(
+                  key: const ValueKey('goto-previous'),
+                  label: 'Back',
+                  onPressed: analysisState.canGoBack ? () => _moveBackward(ref) : null,
+                ),
+              ),
+              RepeatButton(
+                onLongPress: analysisState.canGoNext
+                    ? () => _moveForward(ref, fastSeek: true)
+                    : null,
+                child: SrsTextButton(
+                  key: const ValueKey('goto-next'),
+                  label: 'Forward',
+                  onPressed: analysisState.canGoNext ? () => _moveForward(ref) : null,
+                ),
+              ),
+              SrsTextButton(
+                label: context.l10n.menu,
+                onPressed: () => _showAnalysisMenu(context, ref),
+              ),
+              SrsTextButton(label: context.l10n.flipBoard, onPressed: () => notifier.toggleBoard()),
+            ],
           ),
         ),
       ],

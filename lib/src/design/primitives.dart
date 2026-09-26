@@ -123,7 +123,8 @@ class SrsPillButton extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label, style: SrsText.button(c.ground)),
+            // Excluded: SrsPressable already announces `label`.
+            ExcludeSemantics(child: Text(label, style: SrsText.button(c.ground))),
             if (shortcut != null && _isDesktopPlatform) ...[
               const SizedBox(width: 12),
               SrsKbd(shortcut!, onInk: true),
@@ -161,7 +162,8 @@ class SrsTextButton extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label, style: SrsText.textButton(hover ? c.ink : c.ink2)),
+            // Excluded: SrsPressable already announces `label`.
+            ExcludeSemantics(child: Text(label, style: SrsText.textButton(hover ? c.ink : c.ink2))),
             if (shortcut != null && _isDesktopPlatform) ...[
               const SizedBox(width: 10),
               SrsKbd(shortcut!),
@@ -493,7 +495,10 @@ class SrsPageHead extends StatelessWidget {
                     painter: SrsBackChevronPainter(color: hover ? c.ink : c.ink2),
                   ),
                   const SizedBox(width: 2),
-                  Text(label, style: SrsText.textButton(hover ? c.ink : c.ink2)),
+                  // Excluded: SrsPressable already announces the destination.
+                  ExcludeSemantics(
+                    child: Text(label, style: SrsText.textButton(hover ? c.ink : c.ink2)),
+                  ),
                 ],
               ),
             ),
