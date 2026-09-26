@@ -4,9 +4,22 @@
 <dict>
 	<key>aps-environment</key>
 	<string>development</string>
+	<!--
+	  com.apple.developer.associated-domains is deliberately absent.
+
+	  An applinks entry is a claim that this app is the verified handler for links on that host,
+	  and iOS checks it against an apple-app-site-association file served from the domain. The one
+	  published for lichess.org names the official Lichess bundle, not org.chesssrs.app, so the
+	  claim cannot be satisfied and universal links do not hand off to this app. Keeping the
+	  entitlement asserts an association the app cannot prove, and an unsatisfiable associated
+	  domain is a review risk.
+
+	  To restore it, publish an apple-app-site-association file listing org.chesssrs.app under
+	  appIDs alongside its Team ID, have it served from https://lichess.org/.well-known/, and
+	  add the key back. audit.md M20 tracks this.
+	-->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>applinks:lichess.org</string>
 	</array>
 	<key>com.apple.security.application-groups</key>
 	<array>
