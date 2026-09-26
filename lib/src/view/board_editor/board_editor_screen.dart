@@ -144,7 +144,69 @@ class BoardEditorScreen extends ConsumerWidget {
           ],
         ),
       ),
-      bottomNavigationBar: _BottomBar(params),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _EditorStatusPanel(params: params),
+          _BottomBar(params),
+        ],
+      ),
+    );
+  }
+}
+
+/// Demo `editor` side elements promoted to visible controls: side-to-move
+/// segmented control plus live FEN readout with Copy.
+///
+/// Side-to-move previously lived only in the Filters sheet; the FEN only in
+/// the edit dialog. Both are additions — nothing below moves or is removed.
+class _EditorStatusPanel extends ConsumerWidget {
+  const _EditorStatusPanel({required this.params});
+
+  final BoardEditorControllerParams? params;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.srs;
+    final editorState = ref.watch(boardEditorControllerProvider(params));
+    final notifier = ref.read(boardEditorControllerProvider(params).notifier);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: SrsSegmented<Side>(
+                  options: const {Side.white: 'White to play', Side.black: 'Black to play'},
+                  value: editorState.sideToPlay,
+                  onChanged: (side) => notifier.setSideToPlay(side),
+                ),
+              ),
+              const SizedBox(width: 12),
+              SrsPillButton(
+                label: 'Copy FEN',
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: editorState.fen));
+                  if (context.mounted) {
+                    showSnackBar(context, 'FEN copied.');
+                  }
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SelectableText(
+            editorState.fen,
+            maxLines: 2,
+            style: TextStyle(fontFamily: 'monospace', fontSize: 12.5, height: 1.5, color: c.ink2),
+          ),
+          const SizedBox(height: 4),
+        ],
+      ),
     );
   }
 }
