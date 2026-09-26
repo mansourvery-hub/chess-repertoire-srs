@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:chess_srs/l10n/l10n.dart';
 import 'package:chess_srs/src/app.dart';
 import 'package:chess_srs/src/model/auth/auth_controller.dart';
-import 'package:chess_srs/src/model/common/preloaded_data.dart';
 import 'package:chess_srs/src/model/settings/general_preferences.dart';
 import 'package:chess_srs/src/model/settings/preferences_storage.dart';
 import 'package:chess_srs/src/network/http.dart';
@@ -38,20 +37,20 @@ void main() {
     expect(Theme.of(tester.element(find.byType(MaterialApp))).brightness, Brightness.light);
   }, variant: kPlatformVariant);
 
-  // Was quarantined on 2026-09-26 with skip: true, because it failed on every CI run while
-  // passing on a developer machine. Not a product defect: nothing in the app changed, the test's
-  // own waiting strategy was the problem.
+  // Skipped on 2026-09-26 because it failed on every CI run while passing on a developer
+  // machine, and un-skipped once the cause turned out to be neither this test nor the app.
   //
-  // It waited by pumping frames in a loop, and pumping advances fake time while the work it was
-  // waiting for — a fire-and-forget request issued from a provider build that first awaits several
-  // platform channels — only advances on the real event loop. So the test asserted on however much
-  // of that a machine happened to finish inside its fake-time budget. Waiting in runAsync instead
-  // keeps the bound and drops the machine-speed dependence.
+  // QuickActionService.start() calls the quick_actions plugin on Android and iOS, and this test
+  // runs under kPlatformVariant — so it is Android and iOS. With no handler on the plugin's
+  // channel the call threw MissingPluginException from inside the app's startup, which aborted
+  // the boot before the token check was ever made. That is why the earlier diagnostic saw no
+  // request through the mock at all: the request had not been skipped, the app had stopped
+  // starting. Whether the throw landed inside this test's window or after it was down to
+  // timing, which is what made it read as a machine-speed problem.
   //
-  // The earlier diagnosis that the mock was not intercepting does not hold up: the request is
-  // built from httpClientFactoryProvider directly, and the seeded token is asserted to have been
-  // read before the request count is checked, so a failure now names which of the two broke
-  // instead of just reporting a zero.
+  // The channel is now mocked in the shared test binding, so the fix is not in this file. The
+  // wait below is unchanged from the version that passed locally, deliberately: one variable at
+  // a time, so the run that re-enables this says something.
   testWidgets('App will delete a stored authUser on startup if one request return 401', (
     tester,
   ) async {
@@ -86,41 +85,29 @@ void main() {
     expect(find.byType(MaterialApp), findsOneWidget);
     expect(find.byType(ReviewScreen), findsOneWidget);
 
-    final container = ProviderScope.containerOf(tester.element(find.byType(Application)));
-
-    // The token check is fired from a provider build and deliberately not awaited, and that
-    // provider's own build first waits on several platform channels (package info, device
-    // info, total RAM, two directories). Pumping frames advances *fake* time, which does not
-    // move real async work along, so a loop of pumps is really a bet on how much of that the
-    // machine got through — which is how this test came to pass on a fast machine and fail on a
-    // slower runner. Waiting on the real event loop is bounded the same way, so a genuine
-    // regression still fails rather than hanging, but it no longer depends on machine speed.
-    await tester.runAsync(() async {
-      for (var i = 0; i < 100 && tokenTestRequests == 0; i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      }
-    });
-
-    // Assert the precondition separately, so a failure says which half broke. The request can
-    // only be made if the stored token was actually read back; if it was not, the count below
-    // would be zero and this assertion would have said why.
-    final preloaded = await container.read(preloadedDataProvider.future);
-    expect(
-      preloaded.authUser,
-      isNotNull,
-      reason: 'the seeded token was not read back, so no token check was ever attempted',
-    );
+    // Both the startup token check and the 401 handling that follows are fire-and-forget
+    // requests rather than anything tied to a frame, so pumpAndSettle has no relationship to
+    // them: it returns once animations stop scheduling frames, and its duration is the gap
+    // between pumps rather than a total wait. That made this test depend on machine speed —
+    // it passed on a fast one and failed on a slower runner with the request never sent.
+    // Wait for the condition itself, bounded so a real regression still fails rather than
+    // hanging. The loops exit as soon as the condition holds, so the common case is one pass.
+    for (var i = 0; i < 100 && tokenTestRequests == 0; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
 
     // should have made a request to test the token
     expect(tokenTestRequests, 1);
 
+    final container = ProviderScope.containerOf(tester.element(find.byType(Application)));
+
     // The stale login is cleared once the 401 has been handled, which lands after the token
     // check above.
-    await tester.runAsync(() async {
+    if (container.read(authControllerProvider) != null) {
       for (var i = 0; i < 100 && container.read(authControllerProvider) != null; i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump(const Duration(milliseconds: 50));
       }
-    });
+    }
 
     // authUser is not active anymore
     expect(container.read(authControllerProvider), isNull);

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chess_srs/src/binding.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interface.dart';
@@ -55,6 +56,27 @@ class TestLichessBinding extends LichessBinding {
     super.initInstance();
     _instance = this;
     WakelockPlusPlatformInterface.instance = FakeWakelockPlusPlatform();
+    _mockQuickActions();
+  }
+
+  /// Answers the quick actions plugin's channel with nothing.
+  ///
+  /// `QuickActionService.start` calls the plugin on Android and iOS only, and a test that pumps
+  /// the real `Application` under `variant: kPlatformVariant` *is* Android and iOS. With no
+  /// handler installed the call throws `MissingPluginException` from inside the app's startup,
+  /// which aborts the boot part-way: anything after it never runs, and the error surfaces as a
+  /// failure of whichever test happened to be pumping — or, if the boot had already finished, not
+  /// at all. That last part is why this looked like a machine-speed problem rather than a missing
+  /// mock: the outcome depended on whether the throw landed inside the test's window.
+  ///
+  /// Mocked here rather than in one test because any test that mounts the app hits it. A null
+  /// response is the honest answer: the plugin reports no launch action, and setting shortcuts is
+  /// a no-op.
+  void _mockQuickActions() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/quick_actions'),
+      (call) async => null,
+    );
   }
 
   /// Set the initial values for shared preferences.
