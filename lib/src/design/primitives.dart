@@ -264,40 +264,47 @@ class SrsSwitch extends StatelessWidget {
     required this.semanticLabel,
   });
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
   final String semanticLabel;
 
   @override
   Widget build(BuildContext context) {
     final c = context.srs;
     final d = SrsMotion.resolve(context, SrsMotion.toggle);
+    final enabled = onChanged != null;
     return SrsPressable(
-      onPressed: () => onChanged(!value),
+      onPressed: enabled ? () => onChanged!(!value) : null,
       semanticLabel: semanticLabel,
       semanticsToggled: value,
       radius: 13,
-      builder: (_, _, _) => AnimatedContainer(
-        duration: d,
-        curve: SrsMotion.ease,
+      builder: (_, _, _) => Container(
+        // Demo `.tog::before` expands the hit area to 44px tall.
         width: 44,
-        height: 26,
-        decoration: BoxDecoration(
-          color: value ? c.ink : c.hairline,
-          borderRadius: BorderRadius.circular(13),
-        ),
-        child: AnimatedAlign(
+        height: 44,
+        alignment: Alignment.center,
+        child: AnimatedContainer(
           duration: d,
           curve: SrsMotion.ease,
-          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-          child: Padding(
-            padding: const EdgeInsets.all(3),
-            child: Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: value ? c.ground : c.surface,
-                border: value ? null : Border.all(color: c.hairline, width: 1),
+          width: 44,
+          height: 26,
+          decoration: BoxDecoration(
+            color: value ? c.ink : c.hairline,
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: AnimatedAlign(
+            duration: d,
+            curve: SrsMotion.ease,
+            alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.all(3),
+              child: Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: value ? c.ground : c.surface,
+                  border: value ? null : Border.all(color: c.hairline, width: 1),
+                ),
               ),
             ),
           ),
