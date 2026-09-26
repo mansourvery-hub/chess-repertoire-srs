@@ -18,7 +18,6 @@ import 'package:chessground/chessground.dart';
 import 'package:dartchess/dartchess.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:material_symbols_icons/symbols.dart';
 import 'package:material_ui/material_ui.dart';
 
 export 'package:chess_srs/src/view/review/study_chapters_screen.dart';
@@ -45,14 +44,50 @@ class ReviewScreen extends ConsumerWidget {
             }
             return _ActiveReviewView(state: state, prompt: state.currentPrompt!);
           },
-          loading: () => Center(child: CircularProgressIndicator(strokeWidth: 2, color: c.ink)),
+          loading: () => Center(
+            child: Text(
+              'Loading…',
+              style: TextStyle(fontFamily: SrsText.ui, fontSize: 15, color: c.ink2),
+            ),
+          ),
           error: (err, stack) => Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Text(
-                'Failed to load review: $err',
-                style: SrsText.body(false, c.ink),
-                textAlign: TextAlign.center,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 36.0),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Something went wrong.', style: SrsText.title(c.ink)),
+                    const SizedBox(height: 12.0),
+                    Text(
+                      '$err',
+                      style: TextStyle(
+                        fontFamily: SrsText.ui,
+                        fontSize: 15,
+                        height: 1.45,
+                        color: c.ink2,
+                      ),
+                    ),
+                    const SizedBox(height: 24.0),
+                    Wrap(
+                      spacing: 18.0,
+                      runSpacing: 10.0,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        SrsPillButton(
+                          label: 'Try again',
+                          onPressed: () => ref.invalidate(reviewControllerProvider),
+                        ),
+                        SrsTextButton(
+                          label: 'Copy details',
+                          onPressed: () => Clipboard.setData(ClipboardData(text: '$err')),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -311,7 +346,7 @@ class _NothingDueView extends ConsumerWidget {
     final learning = dueDecisions;
     final fresh = (totalDecisions - learnedDecisions).clamp(0, totalDecisions);
 
-    final displayTitle = state.isDailyLimitReached ? 'Daily Goal Reached!' : 'Nothing due.';
+    final displayTitle = state.isDailyLimitReached ? 'Daily limit reached.' : 'Nothing due.';
     final headlineSize = math.max(44.0, math.min(mediaQuery.size.width * 0.09, 72.0));
 
     return CallbackShortcuts(
@@ -361,16 +396,25 @@ class _NothingDueView extends ConsumerWidget {
                             TextSpan(
                               style: TextStyle(fontFamily: SrsText.ui, fontSize: 18, color: c.ink2),
                               children: [
-                                const TextSpan(text: 'Daily review limit reached ('),
+                                const TextSpan(text: 'You reviewed '),
                                 TextSpan(
-                                  text: '${state.dailyReviewedCount}/${state.maxDailyReviews}',
+                                  text: '${state.dailyReviewedCount}',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     color: c.ink,
                                     fontFeatures: SrsText.tabular,
                                   ),
                                 ),
-                                const TextSpan(text: ' positions reviewed today).'),
+                                const TextSpan(text: ' of '),
+                                TextSpan(
+                                  text: '${state.maxDailyReviews}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: c.ink,
+                                    fontFeatures: SrsText.tabular,
+                                  ),
+                                ),
+                                const TextSpan(text: ' positions today.'),
                               ],
                             ),
                           )
@@ -475,7 +519,7 @@ class _NothingDueView extends ConsumerWidget {
                             ),
                             if (state.isDailyLimitReached)
                               SrsTextButton(
-                                label: 'Adjust Limit',
+                                label: 'Change daily limit',
                                 onPressed: () => Navigator.push(
                                   context,
                                   MaterialPageRoute<void>(
@@ -487,7 +531,9 @@ class _NothingDueView extends ConsumerWidget {
                         ),
                         const SizedBox(height: 18.0),
                         Text(
-                          'Practice never changes your schedule.',
+                          state.isDailyLimitReached
+                              ? 'Practice is still available and does not change your schedule.'
+                              : 'Practice never changes your schedule.',
                           style: TextStyle(fontFamily: SrsText.ui, fontSize: 13.5, color: c.ink3),
                         ),
                       ],
@@ -875,7 +921,7 @@ class _AnswerSlot extends StatelessWidget {
         SrsSan(san, style: SrsText.answerMove(wide, c.accent)),
         const SizedBox(height: 8),
         Text(
-          'Play this move to continue. (Repertoire was $san). The position will come back soon.',
+          'Play this move to continue. The position will come back soon.',
           style: SrsText.answerHelp(wide, c.ink2),
         ),
       ],
@@ -938,6 +984,7 @@ class _SrsDiagnosticsOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.srs;
     final prompt = state.currentPrompt;
     if (prompt == null) return const SizedBox.shrink();
 
@@ -982,93 +1029,64 @@ class _SrsDiagnosticsOverlay extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 2.0),
       padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.85),
+        color: c.hairlineSoft,
         borderRadius: BorderRadius.circular(8.0),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.4),
-        ),
+        border: Border.all(color: c.hairline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              const Icon(Symbols.bug_report_rounded, size: 14.0, color: Colors.orangeAccent),
-              const SizedBox(width: 4.0),
-              Text(
-                'SRS DIAGNOSTICS',
-                style: TextStyle(
-                  fontSize: 10.0,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(width: 6.0),
-              if (isPractice)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5.0, vertical: 1.0),
-                  decoration: BoxDecoration(
-                    color: Colors.orangeAccent.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(4.0),
-                  ),
-                  child: const Text(
-                    'PRACTICE',
-                    style: TextStyle(
-                      fontSize: 9.0,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange,
-                    ),
-                  ),
-                ),
-              const Spacer(),
-              Text(
-                'node: $shortNodeId',
-                style: TextStyle(
-                  fontSize: 10.0,
-                  fontFamily: 'monospace',
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4.0),
           Text(
-            'Expected: $expectedMovesStr',
+            '${isNew ? 'New' : (isPractice ? 'Practice' : 'Recall')} · expected $expectedMovesStr · node $shortNodeId',
             style: TextStyle(
-              fontSize: 10.5,
+              fontFamily: SrsText.ui,
+              fontSize: 11.0,
               fontWeight: FontWeight.w500,
-              color: Theme.of(context).colorScheme.onSurface,
+              color: c.ink2,
             ),
           ),
-          const SizedBox(height: 3.0),
+          const SizedBox(height: 4.0),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 'R: $rPercent% (${isNew ? "New" : "Recall"})',
                 style: TextStyle(
+                  fontFamily: SrsText.ui,
                   fontSize: 11.0,
                   fontWeight: FontWeight.w600,
-                  color: rPercent >= 85
-                      ? Colors.green
-                      : (rPercent >= 70 ? Colors.orange : Colors.red),
+                  color: c.ink,
+                  fontFeatures: SrsText.tabular,
                 ),
               ),
               Text(
                 'S: $stabStr',
-                style: const TextStyle(fontSize: 11.0, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  fontFamily: SrsText.ui,
+                  fontSize: 11.0,
+                  fontWeight: FontWeight.w600,
+                  color: c.ink,
+                  fontFeatures: SrsText.tabular,
+                ),
               ),
               Text(
                 'D: $diff/10',
-                style: const TextStyle(fontSize: 11.0, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  fontFamily: SrsText.ui,
+                  fontSize: 11.0,
+                  fontWeight: FontWeight.w600,
+                  color: c.ink,
+                  fontFeatures: SrsText.tabular,
+                ),
               ),
               Text(
                 'Reps: $reps | Lapses: $lapses',
                 style: TextStyle(
+                  fontFamily: SrsText.ui,
                   fontSize: 11.0,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: c.ink2,
+                  fontFeatures: SrsText.tabular,
                 ),
               ),
             ],
@@ -1079,12 +1097,13 @@ class _SrsDiagnosticsOverlay extends StatelessWidget {
               builder: (context) {
                 return Text(
                   lastResult.isCorrect
-                      ? 'Last: Pass → Next due in ${(lastResult.updatedState.stability / 86400000).toStringAsFixed(1)}d'
-                            '${lastResult.sideEffectStates.isNotEmpty ? " (+${lastResult.sideEffectStates.length} auto-exp)" : ""}'
-                      : 'Last: Lapse! Contagion applied to ${lastResult.sideEffectStates.length} descendant(s)',
+                      ? 'Last: passed · next due in ${(lastResult.updatedState.stability / 86400000).toStringAsFixed(1)} days'
+                            '${lastResult.sideEffectStates.isNotEmpty ? " (+${lastResult.sideEffectStates.length} related)" : ""}'
+                      : 'Last: not recalled · will come back soon',
                   style: TextStyle(
+                    fontFamily: SrsText.ui,
                     fontSize: 10.0,
-                    color: lastResult.isCorrect ? Colors.green : Colors.redAccent,
+                    color: c.ink2,
                     fontWeight: FontWeight.w500,
                   ),
                 );
