@@ -99,6 +99,15 @@ Branch names are `<type>/<area>-<slug>` — `fix/review-redirects`,
 `feat/design-tokens`. Not `agent1/…`: the branch should describe the change, so
 it reads the same whoever picks it up.
 
+**A docs-only PR gets no CI run at all, and that is deliberate.** The workflow's
+`paths` filter lists what the job actually reads — `lib/`, `test/`, the build and
+lint configuration, `assets/`, `scripts/` — and Markdown is not among them,
+because no step in the job reads it. So for a change touching only `.md` files,
+"CI is green" means *no checks were reported*, not *checks passed*. Say so in the
+PR rather than leaving a reviewer to wonder whether it ran. If a docs change ever
+does need a check, add a small dedicated workflow triggered on `**.md`; do not
+widen the test job's filter just to make a doc edit look verified.
+
 Four rules, each of which exists because breaking it has cost real work:
 
 - **Never run a git command that writes outside your own worktree.** No
