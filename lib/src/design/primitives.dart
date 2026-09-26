@@ -445,3 +445,85 @@ class _SrsLogoPainter extends CustomPainter {
   @override
   bool shouldRepaint(_SrsLogoPainter old) => old.color != color;
 }
+
+// ---------------------------------------------------------------------------
+// SrsPageHead — demo `.set-head` page header
+// ---------------------------------------------------------------------------
+/// Demo `.set-head`: a horizontal bar (padding 8/12) holding a back
+/// text-button — a painted 16px chevron (stroke 1.8, round caps) plus the
+/// destination label — with an optional trailing action.
+class SrsPageHead extends StatelessWidget {
+  const SrsPageHead({super.key, required this.label, required this.onBack, this.trailing});
+
+  /// Destination named in words, e.g. `Review`, `Library`.
+  final String label;
+  final VoidCallback? onBack;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.srs;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          SrsPressable(
+            onPressed: onBack,
+            semanticLabel: 'Back to $label',
+            radius: 10,
+            builder: (_, hover, _) => Container(
+              constraints: const BoxConstraints(minHeight: SrsLayout.minTouchTarget),
+              padding: const EdgeInsets.only(left: 8, right: 12, top: 10, bottom: 10),
+              decoration: BoxDecoration(
+                color: hover ? c.hairlineSoft : const Color(0x00000000),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CustomPaint(
+                    size: const Size(16, 16),
+                    painter: SrsBackChevronPainter(color: hover ? c.ink : c.ink2),
+                  ),
+                  const SizedBox(width: 2),
+                  Text(label, style: SrsText.textButton(hover ? c.ink : c.ink2)),
+                ],
+              ),
+            ),
+          ),
+          if (trailing != null) ...[const Spacer(), trailing!],
+        ],
+      ),
+    );
+  }
+}
+
+/// Painted back chevron matching the demo's `.set-head` svg:
+/// `M10 3 L5 8 L10 13` in a 16px box, stroke 1.8, round caps and joins.
+class SrsBackChevronPainter extends CustomPainter {
+  const SrsBackChevronPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width / 16;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.8 * s
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke
+      ..isAntiAlias = true;
+    canvas.drawPath(
+      Path()
+        ..moveTo(10 * s, 3 * s)
+        ..lineTo(5 * s, 8 * s)
+        ..lineTo(10 * s, 13 * s),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(SrsBackChevronPainter old) => old.color != color;
+}
