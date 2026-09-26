@@ -1,5 +1,6 @@
 import 'package:app_settings/app_settings.dart';
 import 'package:chess_srs/l10n/l10n.dart';
+import 'package:chess_srs/src/constants.dart';
 import 'package:chess_srs/src/db/database.dart';
 import 'package:chess_srs/src/model/auth/auth_controller.dart';
 import 'package:chess_srs/src/model/common/preloaded_data.dart';
@@ -193,19 +194,13 @@ class SettingsScreen extends ConsumerWidget {
                 title: const Text('Rate this app'),
                 onTap: () async {
                   final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+                  final links = androidAppStoreLinks();
                   final launched = await launchUrl(
-                    isAndroid
-                        ? Uri.parse('market://details?id=org.lichess.mobileV2')
-                        : Uri.parse('https://apps.apple.com/us/app/lichess/id1662361230'),
+                    isAndroid ? links.native : appStoreListingUrl(isAndroid: false),
                     mode: LaunchMode.externalApplication,
                   );
                   if (!launched && isAndroid) {
-                    launchUrl(
-                      Uri.parse(
-                        'https://play.google.com/store/apps/details?id=org.lichess.mobileV2',
-                      ),
-                      mode: LaunchMode.externalApplication,
-                    );
+                    launchUrl(links.web, mode: LaunchMode.externalApplication);
                   }
                 },
                 trailing: const OpenInNewIcon(),

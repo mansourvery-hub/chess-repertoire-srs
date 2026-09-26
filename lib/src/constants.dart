@@ -30,6 +30,44 @@ const kLichessTablebaseHost = String.fromEnvironment(
 
 const kLichessCustomUriSchemeName = 'org.chesssrs.app';
 
+/// This app's store listings, for the "rate this app" action.
+///
+/// The package name is the same on Android as the application id and the iOS bundle id, so it is
+/// declared once here rather than repeated — and, more to the point, so that no listing can point
+/// at somebody else's app. It used to: the tile opened `org.lichess.mobileV2` and Lichess's own
+/// App Store page, so rating this app sent the user to the upstream project it was forked from.
+const kAppStorePackageName = kLichessCustomUriSchemeName;
+
+/// The App Store listing's numeric id, which Apple assigns and which cannot be derived from
+/// anything in the repository.
+///
+/// Null until the listing exists. A null here must not fall back to some other app's id: the
+/// search below is a placeholder that cannot open the wrong app, and replacing it with the real
+/// id is a one-line change once the app is published.
+const kAppStoreListingId = null;
+
+/// Where "rate this app" sends the user.
+///
+/// On Android this is the app's own Play listing, which is fully determined by the package name.
+/// On iOS, until [kAppStoreListingId] is filled in, it is an App Store search for this app's name
+/// rather than a hardcoded listing, because a wrong id is worse than an inexact one.
+Uri appStoreListingUrl({required bool isAndroid}) {
+  if (isAndroid) {
+    return Uri.parse('https://play.google.com/store/apps/details?id=$kAppStorePackageName');
+  }
+  const listingId = kAppStoreListingId;
+  return listingId != null
+      ? Uri.parse('https://apps.apple.com/us/app/id$listingId')
+      : Uri.parse('https://apps.apple.com/us/search?term=ChessSRS');
+}
+
+/// The deep link that opens the Play Store app on a device that has it, falling back to the web
+/// listing when no store app is present.
+({Uri native, Uri web}) androidAppStoreLinks() => (
+  native: Uri.parse('market://details?id=$kAppStorePackageName'),
+  web: appStoreListingUrl(isAndroid: true),
+);
+
 const kLichessClientId = 'chess_srs';
 
 const kSRIStorageKey = 'socket_random_identifier';
