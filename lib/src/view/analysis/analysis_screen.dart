@@ -1,8 +1,12 @@
+import 'dart:async';
+
+import 'package:chess_srs/src/design/design.dart';
 import 'package:chess_srs/src/model/analysis/analysis_controller.dart';
 import 'package:chess_srs/src/model/analysis/analysis_preferences.dart';
 import 'package:chess_srs/src/model/auth/auth_controller.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
 import 'package:chess_srs/src/model/engine/evaluation_preferences.dart';
+import 'package:chess_srs/src/model/engine/position_evaluator.dart';
 import 'package:chess_srs/src/model/game/player.dart';
 import 'package:chess_srs/src/utils/focus_detector.dart';
 import 'package:chess_srs/src/utils/immersive_mode.dart';
@@ -27,15 +31,14 @@ import 'package:chess_srs/src/view/game/game_common_widgets.dart';
 import 'package:chess_srs/src/view/user/user_or_profile_screen.dart';
 import 'package:chess_srs/src/widgets/adaptive_action_sheet.dart';
 import 'package:chess_srs/src/widgets/adaptive_choice_picker.dart';
-import 'package:chess_srs/src/widgets/bottom_bar.dart';
 import 'package:chess_srs/src/widgets/buttons.dart';
 import 'package:chess_srs/src/widgets/feedback.dart';
 import 'package:chess_srs/src/widgets/move_times_chart.dart';
 import 'package:chess_srs/src/widgets/platform_context_menu_button.dart';
 import 'package:chess_srs/src/widgets/user.dart';
 import 'package:chess_srs/src/widgets/variant_app_bar_title.dart';
-import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:dartchess/dartchess.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:material_ui/material_ui.dart';
@@ -72,6 +75,7 @@ class _AnalysisScreenState extends ConsumerState<_AnalysisScreen> {
   Widget build(BuildContext context) {
     final ctrlProvider = analysisControllerProvider(widget.options);
     final asyncState = ref.watch(ctrlProvider);
+    final c = context.srs;
 
     switch (asyncState) {
       case AsyncData(:final value):
@@ -99,28 +103,123 @@ class _AnalysisScreenState extends ConsumerState<_AnalysisScreen> {
                     )
                   : VariantAppBarTitle(variant: value.variant, title: context.l10n.analysis));
 
+        // Quiet scene-title line under the header (demo meta treatment).
+        // The full title widget is preserved when there is no plain name.
+        final Widget titleLine = displayTitle != null
+            ? Text(
+                displayTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: SrsText.meta(c.ink2),
+              )
+            : appBarTitle;
+
         return WakelockWidget(
           child: Scaffold(
             resizeToAvoidBottomInset: false,
-            appBar: AppBar(
-              title: appBarTitle,
-              actions: [_AnalysisMenu(options: widget.options)],
-            ),
-            body: _TabbedBody(
-              options: widget.options,
-              // Move times can only be shown for games played with a clock.
-              showMoveTimes: value.chartClocks.isNotEmpty,
+            backgroundColor: c.ground,
+            body: SafeArea(
+              child: Column(
+                children: [
+                  SrsPageHead(
+                    label: 'Review',
+                    onBack: () => Navigator.of(context).pop(),
+                    trailing: _AnalysisMenu(options: widget.options),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 2, 24, 8),
+                      child: titleLine,
+                    ),
+                  ),
+                  Expanded(
+                    child: _TabbedBody(
+                      options: widget.options,
+                      // Move times can only be shown for games played with a clock.
+                      showMoveTimes: value.chartClocks.isNotEmpty,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
       case AsyncError(:final error, :final stackTrace):
         _logger.severe('Cannot load analysis:', error, stackTrace);
-        return FullScreenRetryRequest(onRetry: () => ref.invalidate(ctrlProvider));
+        return Scaffold(
+          resizeToAvoidBottomInset: false,
+          backgroundColor: c.ground,
+          body: SafeArea(
+            child: Column(
+              children: [
+                SrsPageHead(label: 'Review', onBack: () => Navigator.of(context).pop()),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 36),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('Something went wrong.', style: SrsText.title(c.ink)),
+                            const SizedBox(height: 12),
+                            Text(
+                              '$error',
+                              style: TextStyle(
+                                fontFamily: SrsText.ui,
+                                fontSize: 15,
+                                height: 1.45,
+                                color: c.ink2,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            Wrap(
+                              spacing: 18.0,
+                              runSpacing: 10.0,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                SrsPillButton(
+                                  label: 'Try again',
+                                  onPressed: () => ref.invalidate(ctrlProvider),
+                                ),
+                                SrsTextButton(
+                                  label: 'Copy details',
+                                  onPressed: () => Clipboard.setData(ClipboardData(text: '$error')),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
       case _:
         return Scaffold(
           resizeToAvoidBottomInset: false,
-          appBar: AppBar(title: const ExportedGameTitleLoading()),
-          body: const Center(child: CircularProgressIndicator.adaptive()),
+          backgroundColor: c.ground,
+          body: SafeArea(
+            child: Column(
+              children: [
+                SrsPageHead(label: 'Review', onBack: () => Navigator.of(context).pop()),
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      'Loading…',
+                      style: TextStyle(fontFamily: SrsText.ui, fontSize: 15, color: c.ink2),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
     }
   }
@@ -374,70 +473,106 @@ class _BottomBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final ctrlProvider = analysisControllerProvider(options);
     final analysisState = ref.watch(ctrlProvider).requireValue;
+    final evalPrefs = ref.watch(engineEvaluationPreferencesProvider);
+    final c = context.srs;
+    final notifier = ref.read(ctrlProvider.notifier);
 
-    return BottomBar(
-      children: [
-        BottomBarButton(
-          label: context.l10n.menu,
-          onTap: () {
-            _showAnalysisMenu(context, ref);
-          },
-          icon: Icons.menu,
-        ),
-        BottomBarButton(
-          label: context.l10n.flipBoard,
-          onTap: () => ref.read(ctrlProvider.notifier).toggleBoard(),
-          icon: CupertinoIcons.arrow_2_squarepath,
-        ),
-        if (analysisState.isComputerAnalysisAllowed)
-          Builder(
-            builder: (context) {
-              Future<void>? toggleFuture;
-              return FutureBuilder(
-                future: toggleFuture,
-                builder: (context, snapshot) {
-                  return EngineButton(
-                    filters: (
-                      context: analysisState.evaluationContext,
-                      path: analysisState.currentPath,
-                    ),
-                    savedEval: analysisState.currentNode.eval,
-                    onTap:
-                        analysisState.isEngineAllowed &&
-                            snapshot.connectionState != ConnectionState.waiting
-                        ? () async {
-                            toggleFuture = ref.read(ctrlProvider.notifier).toggleEngine();
-                            try {
-                              await toggleFuture;
-                            } finally {
-                              toggleFuture = null;
+    Widget? engineRow;
+    if (analysisState.isComputerAnalysisAllowed) {
+      final filters = (context: analysisState.evaluationContext, path: analysisState.currentPath);
+      final EngineEvaluationState(:isComputing, currentWork: work) = ref.watch(
+        engineEvaluationProvider(filters),
+      );
+      final canGoDeeper = !isComputing && (work == null || work.isDeeper != true);
+      engineRow = Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+        child: Row(
+          children: [
+            Text('Engine', style: SrsText.settingLabel(c.ink)),
+            const SizedBox(width: 10),
+            Builder(
+              builder: (context) {
+                Future<void>? toggleFuture;
+                return FutureBuilder(
+                  future: toggleFuture,
+                  builder: (context, snapshot) {
+                    return EngineButton(
+                      filters: filters,
+                      savedEval: analysisState.currentNode.eval,
+                      onTap:
+                          analysisState.isEngineAllowed &&
+                              snapshot.connectionState != ConnectionState.waiting
+                          ? () async {
+                              toggleFuture = ref.read(ctrlProvider.notifier).toggleEngine();
+                              try {
+                                await toggleFuture;
+                              } finally {
+                                toggleFuture = null;
+                              }
                             }
-                          }
-                        : null,
-                    goDeeper: () => ref.read(ctrlProvider.notifier).requestEval(goDeeper: true),
-                  );
-                },
-              );
-            },
-          ),
-        RepeatButton(
-          onLongPress: analysisState.canGoBack ? () => _moveBackward(ref, fastSeek: true) : null,
-          child: BottomBarButton(
-            key: const ValueKey('goto-previous'),
-            onTap: analysisState.canGoBack ? () => _moveBackward(ref) : null,
-            label: 'Previous',
-            icon: CupertinoIcons.chevron_back,
-            showTooltip: false,
-          ),
+                          : null,
+                      goDeeper: () => ref.read(ctrlProvider.notifier).requestEval(goDeeper: true),
+                    );
+                  },
+                );
+              },
+            ),
+            const Spacer(),
+            if (canGoDeeper)
+              SrsTextButton(
+                label: context.l10n.goDeeper,
+                onPressed: () => notifier.requestEval(goDeeper: true),
+              ),
+            SrsSwitch(
+              value: evalPrefs.isEnabled,
+              semanticLabel: context.l10n.toggleLocalEvaluation,
+              onChanged: analysisState.isEngineAllowed
+                  ? (_) => unawaited(notifier.toggleEngine())
+                  : null,
+            ),
+          ],
         ),
-        RepeatButton(
-          onLongPress: analysisState.canGoNext ? () => _moveForward(ref, fastSeek: true) : null,
-          child: BottomBarButton(
-            key: const ValueKey('goto-next'),
-            icon: CupertinoIcons.chevron_forward,
-            label: context.l10n.next,
-            onTap: analysisState.canGoNext ? () => _moveForward(ref) : null,
-            showTooltip: false,
+      );
+    }
+
+    // Diagram actions replacing the legacy bottom bar: same features,
+    // plain text buttons. Menu/Flip/Back/Forward all survive the move.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ?engineRow,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
+          child: Wrap(
+            spacing: 14,
+            runSpacing: 6,
+            children: [
+              RepeatButton(
+                onLongPress: analysisState.canGoBack
+                    ? () => _moveBackward(ref, fastSeek: true)
+                    : null,
+                child: SrsTextButton(
+                  key: const ValueKey('goto-previous'),
+                  label: 'Back',
+                  onPressed: analysisState.canGoBack ? () => _moveBackward(ref) : null,
+                ),
+              ),
+              RepeatButton(
+                onLongPress: analysisState.canGoNext
+                    ? () => _moveForward(ref, fastSeek: true)
+                    : null,
+                child: SrsTextButton(
+                  key: const ValueKey('goto-next'),
+                  label: 'Forward',
+                  onPressed: analysisState.canGoNext ? () => _moveForward(ref) : null,
+                ),
+              ),
+              SrsTextButton(
+                label: context.l10n.menu,
+                onPressed: () => _showAnalysisMenu(context, ref),
+              ),
+              SrsTextButton(label: context.l10n.flipBoard, onPressed: () => notifier.toggleBoard()),
+            ],
           ),
         ),
       ],
