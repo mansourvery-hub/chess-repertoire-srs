@@ -1,8 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:chess_srs/src/constants.dart';
-import 'package:chess_srs/src/design/board_background.dart';
-import 'package:chess_srs/src/design/tokens.dart';
+import 'package:chess_srs/src/design/design.dart';
 import 'package:chess_srs/src/model/analysis/analysis_controller.dart';
 import 'package:chess_srs/src/model/board_editor/board_editor_controller.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
@@ -45,74 +44,104 @@ class BoardEditorScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final boardEditorState = ref.watch(boardEditorControllerProvider(params));
+    final c = context.srs;
+
+    // Quiet scene-title line under the header (demo meta treatment).
+    // Carries the variant name the old app bar title showed as an icon.
+    final sceneTitle = boardEditorState.variant == Variant.standard
+        ? context.l10n.boardEditor
+        : '${boardEditorState.variant.label(context.l10n)} • ${context.l10n.boardEditor}';
 
     return Scaffold(
-      appBar: AppBar(
-        title: VariantAppBarTitle(
-          variant: boardEditorState.variant,
-          title: context.l10n.boardEditor,
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            tooltip: 'FEN',
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (_) => _FenDialog(
-                onFenLoaded: (fen) =>
-                    ref.read(boardEditorControllerProvider(params).notifier).loadFen(fen),
+      backgroundColor: c.ground,
+      body: SafeArea(
+        child: Column(
+          children: [
+            SrsPageHead(
+              label: 'Review',
+              onBack: () => Navigator.of(context).pop(),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit),
+                    tooltip: 'FEN',
+                    onPressed: () => showDialog<void>(
+                      context: context,
+                      builder: (_) => _FenDialog(
+                        onFenLoaded: (fen) =>
+                            ref.read(boardEditorControllerProvider(params).notifier).loadFen(fen),
+                      ),
+                    ),
+                  ),
+                  SemanticIconButton(
+                    semanticsLabel: context.l10n.mobileSharePositionAsFEN,
+                    onPressed: () =>
+                        launchShareDialog(context, ShareParams(text: boardEditorState.fen)),
+                    icon: const PlatformShareIcon(),
+                  ),
+                ],
               ),
             ),
-          ),
-          SemanticIconButton(
-            semanticsLabel: context.l10n.mobileSharePositionAsFEN,
-            onPressed: () => launchShareDialog(context, ShareParams(text: boardEditorState.fen)),
-            icon: const PlatformShareIcon(),
-          ),
-        ],
-      ),
-      body: Center(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final aspectRatio = constraints.biggest.aspectRatio;
-
-            final defaultBoardSize = constraints.biggest.shortestSide;
-            final isTablet = isTabletOrLarger(context);
-            final boardSize = defaultBoardSize;
-
-            final direction = aspectRatio > 1 ? Axis.horizontal : Axis.vertical;
-
-            return Flex(
-              direction: direction,
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              mainAxisSize: MainAxisSize.max,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                _PieceMenu(
-                  boardSize,
-                  params: params,
-                  direction: flipAxis(direction),
-                  side: boardEditorState.orientation.opposite,
-                  isTablet: isTablet,
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 2, 24, 8),
+                child: Text(
+                  sceneTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: SrsText.meta(c.ink2),
                 ),
-                _BoardEditor(
-                  boardSize,
-                  params: params,
-                  orientation: boardEditorState.orientation,
-                  isTablet: isTablet,
-                  // unlockView is safe because chessground will never modify the pieces
-                  pieces: boardEditorState.pieces.unlockView,
+              ),
+            ),
+            Expanded(
+              child: Center(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final aspectRatio = constraints.biggest.aspectRatio;
+
+                    final defaultBoardSize = constraints.biggest.shortestSide;
+                    final isTablet = isTabletOrLarger(context);
+                    final boardSize = defaultBoardSize;
+
+                    final direction = aspectRatio > 1 ? Axis.horizontal : Axis.vertical;
+
+                    return Flex(
+                      direction: direction,
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      mainAxisSize: MainAxisSize.max,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        _PieceMenu(
+                          boardSize,
+                          params: params,
+                          direction: flipAxis(direction),
+                          side: boardEditorState.orientation.opposite,
+                          isTablet: isTablet,
+                        ),
+                        _BoardEditor(
+                          boardSize,
+                          params: params,
+                          orientation: boardEditorState.orientation,
+                          isTablet: isTablet,
+                          // unlockView is safe because chessground will never modify the pieces
+                          pieces: boardEditorState.pieces.unlockView,
+                        ),
+                        _PieceMenu(
+                          boardSize,
+                          params: params,
+                          direction: flipAxis(direction),
+                          side: boardEditorState.orientation,
+                          isTablet: isTablet,
+                        ),
+                      ],
+                    );
+                  },
                 ),
-                _PieceMenu(
-                  boardSize,
-                  params: params,
-                  direction: flipAxis(direction),
-                  side: boardEditorState.orientation,
-                  isTablet: isTablet,
-                ),
-              ],
-            );
-          },
+              ),
+            ),
+          ],
         ),
       ),
       bottomNavigationBar: _BottomBar(params),

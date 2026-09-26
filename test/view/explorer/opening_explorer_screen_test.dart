@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:chess_srs/src/constants.dart';
+import 'package:chess_srs/src/design/design.dart';
 import 'package:chess_srs/src/model/analysis/analysis_controller.dart';
 import 'package:chess_srs/src/model/auth/auth_controller.dart';
 import 'package:chess_srs/src/model/common/chess.dart';
@@ -87,10 +88,20 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
 
       final moves = ['e4', 'd4'];
-      expect(find.byType(Table), findsOneWidget);
       for (final move in moves) {
-        expect(find.widgetWithText(TableRowInkWell, move), findsOneWidget);
+        expect(find.widgetWithText(SrsPressable, move), findsOneWidget);
       }
+
+      // Tapping a row plays the move on the board.
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(OpeningExplorerScreen)),
+      );
+      await tester.tap(find.widgetWithText(SrsPressable, 'e4'));
+      await tester.pumpAndSettle();
+      expect(
+        container.read(analysisControllerProvider(options)).requireValue.currentNode.position.ply,
+        equals(1),
+      );
 
       expect(find.widgetWithText(Container, 'Top games'), findsOneWidget);
       expect(find.widgetWithText(Container, 'Recent games'), findsNothing);
@@ -135,9 +146,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
 
       final moves = ['d4'];
-      expect(find.byType(Table), findsOneWidget);
       for (final move in moves) {
-        expect(find.widgetWithText(TableRowInkWell, move), findsOneWidget);
+        expect(find.widgetWithText(SrsPressable, move), findsOneWidget);
       }
 
       expect(find.widgetWithText(Container, 'Top games'), findsNothing);
@@ -180,9 +190,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
 
       final moves = ['c4'];
-      expect(find.byType(Table), findsOneWidget);
       for (final move in moves) {
-        expect(find.widgetWithText(TableRowInkWell, move), findsOneWidget);
+        expect(find.widgetWithText(SrsPressable, move), findsOneWidget);
       }
 
       expect(find.widgetWithText(Container, 'Top games'), findsNothing);
@@ -227,9 +236,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
 
       final moves = ['e4'];
-      expect(find.byType(Table), findsOneWidget);
       for (final move in moves) {
-        expect(find.widgetWithText(TableRowInkWell, move), findsOneWidget);
+        expect(find.widgetWithText(SrsPressable, move), findsOneWidget);
       }
     }, variant: kPlatformVariant);
 
@@ -254,7 +262,9 @@ void main() {
       expect(boardHasPiece(tester, Square.e4, Piece.whitePawn), isTrue);
 
       // Go back to "more" screen and open opening explorer
-      await tester.pageBack();
+      await tester.tap(
+        find.descendant(of: find.byType(SrsPageHead), matching: find.text('Review')),
+      );
       await tester.pump();
 
       await tester.tap(find.text('Opening explorer'));
