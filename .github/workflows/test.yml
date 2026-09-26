@@ -1,12 +1,27 @@
 name: Tests
 
+# The path filter lists every input the job below actually reads, so that a change to one of
+# them cannot skip verification. Each entry earns its place:
+#   analysis_options.yaml  sets the dart format page width and the lint set
+#   pubspec.lock           dependency resolution
+#   build.yaml             build_runner configuration
+#   assets/**              maia_book_asset_test.dart loads these through rootBundle
+#   scripts/**             update_openings_db_test.dart executes the python script
+# 'docs/**' is deliberately absent: no step below reads Markdown, so triggering a run for a
+# documentation change would spend several minutes to confirm what cannot fail.
+# Keep the push and pull_request filters identical.
 on:
   push:
     paths:
       - 'lib/**'
       - '!lib/l10n/**'
       - 'test/**'
+      - 'assets/**'
+      - 'scripts/**'
       - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'analysis_options.yaml'
+      - 'build.yaml'
       - '.github/workflows/test.yml'
     branches:
       - main
@@ -15,7 +30,12 @@ on:
       - 'lib/**'
       - '!lib/l10n/**'
       - 'test/**'
+      - 'assets/**'
+      - 'scripts/**'
       - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'analysis_options.yaml'
+      - 'build.yaml'
       - '.github/workflows/test.yml'
     branches:
       - main
