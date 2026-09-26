@@ -69,8 +69,28 @@
                 <data android:mimeType="text/x-chess-pgn" />
             </intent-filter>
 
-            <!-- App Links verified against https://lichess.org/.well-known/assetlinks.json -->
-            <intent-filter android:autoVerify="true">
+            <!--
+              lichess.org links, offered to the user but NOT claimed as verified.
+
+              `android:autoVerify` is deliberately absent. Auto-verification only succeeds if
+              https://lichess.org/.well-known/assetlinks.json names this app's package
+              (org.chesssrs.app) and its signing certificate. That record is published by the
+              site and currently names the official org.lichess.mobileV2, so verification fails
+              and the claim is false: Android will not route a link to the app on the strength of
+              it. Declaring it anyway costs nothing functionally and gains nothing, while
+              asserting an association the app cannot prove is a claim that fails review and
+              misleads anyone reading the manifest.
+
+              Without autoVerify the filter still matches, so a lichess.org link reaches the app
+              through the system chooser. That is strictly more than the verified claim was
+              actually delivering.
+
+              To restore autoVerify, publish an assetlinks.json naming org.chesssrs.app plus the
+              release signing certificate's SHA-256 fingerprint, confirm it at
+              https://digitalassetlinks.googleapis.com/v1/statements:verify?source.web.site=https://lichess.org
+              and add the attribute back. audit.md M20 tracks this.
+            -->
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
