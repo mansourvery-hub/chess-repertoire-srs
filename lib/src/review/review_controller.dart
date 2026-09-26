@@ -231,6 +231,16 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
   _PendingAdvancement? _pendingAdvancement;
   bool _isProcessingMove = false;
 
+  /// Bumped by every request that establishes a review session.
+  ///
+  /// Loading a scope reads the studies, chapters, decisions and review states it needs, so it
+  /// yields often enough for a second request to overtake it. Two scope changes in quick
+  /// succession, or a scope change racing a settings change, both come to rest here with the
+  /// screen showing one session while [ReviewService.activeSession] — the session that grades
+  /// the moves — is the other. Ordering the requests and ordering the results on the same
+  /// counter is what keeps the two in agreement.
+  int _generation = 0;
+
   bool _hasAnnotationsOrShapes(String? comment) {
     if (comment == null || comment.trim().isEmpty) return false;
     try {
@@ -278,7 +288,16 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
       );
     }
 
-    return await _loadState(const ReviewScope.all());
+    // A load superseded before it finishes has nothing to publish — the request that replaced
+    // it will. Riverpod discards a build result once the notifier has moved on, so returning
+    // the empty state is only ever a placeholder for a result nobody will read.
+    return await _loadState(scope: const ReviewScope.all(), generation: ++_generation) ??
+        const ReviewScreenState(
+          studies: [],
+          scope: ReviewScope.all(),
+          totalDueCount: 0,
+          studyDueCounts: {},
+        );
   }
 
   /// Derives the remaining allowance from a count of positions already reviewed today.
@@ -301,10 +320,33 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
     return _remainingQuotaFor(mode, reviewed);
   }
 
-  Future<ReviewScreenState> _loadState(
-    ReviewScope scope, [
+  /// Loads [scope] in [mode] and publishes the result, unless a newer request has overtaken it.
+  ///
+  /// Bumping [_generation] first is what supersedes any load already in flight, so the older one
+  /// reaches neither the screen nor the service's active session once it finishes.
+  Future<void> _loadAndPublish(ReviewScope scope, ReviewMode mode) async {
+    _pendingAdvancement = null;
+    final generation = ++_generation;
+    try {
+      final next = await _loadState(scope: scope, mode: mode, generation: generation);
+      // Null means a newer request took over; it publishes its own result.
+      if (next == null || !ref.mounted) return;
+      state = AsyncData(next);
+    } catch (e, st) {
+      // A failure from a superseded load is not this screen's problem to report.
+      if (!ref.mounted || generation != _generation) return;
+      _logger.warning('Failed to load review state for $scope', e, st);
+      state = AsyncError(e, st);
+    }
+  }
+
+  /// Returns null when [generation] has been superseded, in which case the caller must not
+  /// publish what it was loading.
+  Future<ReviewScreenState?> _loadState({
+    required ReviewScope scope,
     ReviewMode mode = ReviewMode.srs,
-  ]) async {
+    int? generation,
+  }) async {
     final maxDailyReviews = ref.read(studyPreferencesProvider).maxDailyReviews;
     final now = ref.read(clockProvider).now();
     final dailyReviewedCount = await _repository.getTodayReviewedPositionsCount(now);
@@ -319,6 +361,7 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
     );
 
     if (studies.isEmpty) {
+      if (generation != null && generation != _generation) return null;
       return ReviewScreenState(
         studies: studies,
         scope: scope,
@@ -338,7 +381,15 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
       scope: scope,
       mode: mode,
       remainingDailyQuota: remainingQuota,
+      generation: generation,
     );
+
+    // Everything below reads the session that was just built, and everything above waited on
+    // the database. A request made in between owns the screen now, so this load is abandoned
+    // here rather than published over it — and the session was not installed as the active one
+    // either, so the screen and the grader cannot end up on different sessions.
+    if (generation != null && generation != _generation) return null;
+
     final prompt = session.currentPrompt;
 
     Position? position;
@@ -397,36 +448,29 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
   }
 
   /// Changes the active review scope (all studies or a specific study).
-  Future<void> changeScope(ReviewScope scope) async {
-    _pendingAdvancement = null;
-    state = await AsyncValue.guard(() => _loadState(scope));
-  }
+  Future<void> changeScope(ReviewScope scope) => _loadAndPublish(scope, ReviewMode.srs);
 
   /// Reloads the session and due counts for the current scope.
   Future<void> reload() async {
-    _pendingAdvancement = null;
     if (!ref.mounted) return;
     final currentState = state.value;
-    final currentScope = currentState?.scope ?? const ReviewScope.all();
-    final currentMode = currentState?.mode ?? ReviewMode.srs;
-    final newState = await AsyncValue.guard(() => _loadState(currentScope, currentMode));
-    if (ref.mounted) {
-      state = newState;
-    }
+    await _loadAndPublish(
+      currentState?.scope ?? const ReviewScope.all(),
+      currentState?.mode ?? ReviewMode.srs,
+    );
   }
 
   /// Starts non-destructive pre-match rehearsal / cram mode (PRODUCT.md Journey 4).
   Future<void> startPracticeMode({ReviewScope? scope}) async {
-    _pendingAdvancement = null;
-    final targetScope = scope ?? state.value?.scope ?? const ReviewScope.all();
-    state = await AsyncValue.guard(() => _loadState(targetScope, ReviewMode.practice));
+    await _loadAndPublish(
+      scope ?? state.value?.scope ?? const ReviewScope.all(),
+      ReviewMode.practice,
+    );
   }
 
   /// Exits practice mode and returns to standard SRS review.
   Future<void> exitPracticeMode() async {
-    _pendingAdvancement = null;
-    final currentScope = state.value?.scope ?? const ReviewScope.all();
-    state = await AsyncValue.guard(() => _loadState(currentScope, ReviewMode.srs));
+    await _loadAndPublish(state.value?.scope ?? const ReviewScope.all(), ReviewMode.srs);
   }
 
   /// Toggles whether a study is included in the daily review pool (PRODUCT.md Journey 5).
@@ -434,6 +478,11 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
     final currentState = state.value;
     if (currentState == null) return;
     _logger.info('Toggling study $studyId active state to $isActive');
+
+    // Adding or removing a study reshapes the review pool, so this is as much a change of
+    // session as a scope change is. Claiming a generation supersedes any load already running:
+    // that load's counts were computed from a pool this toggle has just invalidated.
+    final generation = ++_generation;
 
     // 1. Optimistic UI update: flip isActive immediately so user sees instant feedback
     final updatedStudies = currentState.studies
@@ -468,6 +517,7 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
         scope: currentState.scope,
         mode: currentState.mode,
         remainingDailyQuota: await _remainingDailyQuota(currentState.mode),
+        generation: generation,
       );
       newPrompt = newSession.currentPrompt;
       if (newPrompt != null) {
@@ -477,6 +527,10 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
         newPosition = null;
       }
     }
+
+    // A scope change or reload that started after this toggle owns the screen now; the counts
+    // computed here are from a pool it has already replaced.
+    if (generation != _generation || !ref.mounted) return;
 
     state = AsyncData(
       currentState.copyWith(
@@ -514,6 +568,9 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
   /// Deletes a study and all associated chapters, decisions, and recall history.
   Future<void> deleteStudy(String studyId) async {
     _logger.info('Deleting study $studyId');
+    // Claimed before the delete, not after: any load already running is counting positions in a
+    // pool this is about to empty, so it must not be allowed to publish over the result.
+    final generation = ++_generation;
     await _repository.deleteStudy(studyId);
     if (state.value?.scope.studyId == studyId) {
       await changeScope(const ReviewScope.all());
@@ -531,7 +588,12 @@ class ReviewController extends AsyncNotifier<ReviewScreenState> {
           scope: currentState.scope,
           mode: currentState.mode,
           remainingDailyQuota: remainingQuota,
+          generation: generation,
         );
+
+        // Superseded while the delete and the summary were being computed.
+        if (generation != _generation || !ref.mounted) return;
+
         final prompt = newSession.currentPrompt;
         state = AsyncData(
           currentState.copyWith(

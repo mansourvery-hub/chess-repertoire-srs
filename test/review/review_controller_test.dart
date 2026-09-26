@@ -1,6 +1,8 @@
 // Copyright (C) 2024 ChessSRS contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:async';
+
 import 'package:chess_srs/src/domain/domain.dart';
 import 'package:chess_srs/src/model/common/service/sound_service.dart';
 import 'package:chess_srs/src/model/study/study_preferences.dart';
@@ -18,6 +20,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../binding.dart';
 import '../model/common/service/fake_sound_service.dart';
+import 'gated_study_repository.dart';
 
 void main() {
   setUpAll(() {
@@ -45,15 +48,22 @@ void main() {
       await db.close();
     });
 
-    ProviderContainer createContainer({List<Override> extraOverrides = const []}) {
+    ProviderContainer createContainer({
+      List<Override> extraOverrides = const [],
+      StudyRepository? repository,
+    }) {
+      // The service and the repository provider must be handed the same instance: the service
+      // reads through whatever repository it was built with, and a test that gates one but not
+      // the other would be gating a call the session start never makes.
+      final store = repository ?? repo;
       final container = ProviderContainer(
         overrides: [
-          srsStudyRepositoryProvider.overrideWith((ref) => repo),
+          srsStudyRepositoryProvider.overrideWith((ref) => store),
           clockProvider.overrideWithValue(clock),
           soundServiceProvider.overrideWithValue(FakeSoundService()),
           reviewServiceProvider.overrideWith(
             (ref) => ReviewService(
-              repository: repo,
+              repository: store,
               scheduler: ref.watch(schedulerProvider),
               clock: clock,
             ),
@@ -397,6 +407,60 @@ void main() {
       final updatedStudies = state.studies;
       expect(updatedStudies.firstWhere((s) => s.id == res2.study.id).isActive, isFalse);
     });
+
+    test(
+      'a scope change overtaken mid-load leaves the board and the grader on the same session',
+      () async {
+        final gated = GatedStudyRepository(db);
+        final container = createContainer(repository: gated);
+        final controller = container.read(reviewControllerProvider.notifier);
+
+        final open = await controller.importPgnText(
+          pgnText: '1. e4 e5 *',
+          title: 'Open',
+          repertoireSide: Side.white,
+        );
+        final closed = await controller.importPgnText(
+          pgnText: '1. d4 d5 *',
+          title: 'Closed',
+          repertoireSide: Side.white,
+        );
+
+        // Hold the first scope change open inside the repository, then ask for the second one.
+        // The user tapped 'Closed' last, so 'Closed' is the session the screen shows and the
+        // session every move has to be graded against.
+        gated.gatedStudyId = open.study.id;
+        gated.gate = Completer<void>();
+        gated.reachedGate = Completer<void>();
+
+        final overtaken = controller.changeScope(ReviewScope.study(open.study.id));
+        await gated.reachedGate!.future;
+
+        await controller.changeScope(ReviewScope.study(closed.study.id));
+
+        gated.gate!.complete();
+        await overtaken;
+
+        final state = container.read(reviewControllerProvider).requireValue;
+        final service = container.read(reviewServiceProvider);
+
+        expect(state.scope, ReviewScope.study(closed.study.id));
+        expect(
+          service.activeSession!.scope,
+          ReviewScope.study(closed.study.id),
+          reason: 'the session that grades moves must be the one the user last asked for',
+        );
+        // The two halves of the review are separate objects: the state carries the session the
+        // board renders, and the service holds the one that decides right from wrong. If they
+        // are not the same session the board looks correct while every answer is graded against
+        // a different position, which is the failure this guards.
+        expect(
+          state.session,
+          same(service.activeSession),
+          reason: 'screen and grader disagreed on which session is current',
+        );
+      },
+    );
 
     test(
       'renameStudy updates title in-place without setting loading or resetting session',

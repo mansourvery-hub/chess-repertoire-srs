@@ -1,6 +1,7 @@
 // Copyright (C) 2024 ChessSRS contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:chess_srs/src/db/database.dart';
@@ -10,6 +11,8 @@ import 'package:chess_srs/src/review/review_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import 'gated_study_repository.dart';
 
 void main() {
   setUpAll(() {
@@ -677,6 +680,106 @@ void main() {
         }
       },
     );
+
+    group('session ownership', () {
+      test(
+        'a session that resolves after a newer one has been requested does not become active',
+        () async {
+          final db = await openAppDatabase(databaseFactoryFfi, dbPath);
+          final repo = GatedStudyRepository(db);
+          final service = ReviewService(repository: repo, clock: clock);
+
+          try {
+            for (final id in ['s_slow', 's_fast']) {
+              await repo.saveStudy(Study(id: id, title: id, createdAt: now, updatedAt: now));
+              final chapter = Chapter.create(studyId: id, sourceOrder: 0, title: 'Chapter');
+              await repo.saveChapter(chapter);
+              await repo.saveDecisions([
+                RepertoireDecision.create(
+                  studyId: id,
+                  chapterId: chapter.id,
+                  nodeId: 'n_$id',
+                  expectedMoves: const [RepertoireMove(from: 'e2', to: 'e4', san: 'e4')],
+                ),
+              ]);
+            }
+
+            // Park the first session inside the repository so it is guaranteed to still be
+            // loading when the second one starts — the ordering that loses the user their
+            // review, arrived at by the database being slower the second time.
+            repo.gatedStudyId = 's_slow';
+            repo.gate = Completer<void>();
+            repo.reachedGate = Completer<void>();
+
+            final pendingSlow = service.startSession(
+              scope: const ReviewScope.study('s_slow'),
+              generation: 1,
+            );
+            await repo.reachedGate!.future;
+
+            final fast = await service.startSession(
+              scope: const ReviewScope.study('s_fast'),
+              generation: 2,
+            );
+            expect(service.activeSession, same(fast));
+
+            repo.gate!.complete();
+            final slow = await pendingSlow;
+
+            // The user asked for s_fast last, so s_fast is the session everything else must
+            // agree on: the board shows it, and moves are graded against it. A session that
+            // finishes loading late cannot be allowed to take that over.
+            expect(slow.scope, const ReviewScope.study('s_slow'));
+            expect(
+              service.activeSession,
+              same(fast),
+              reason: 'the stale session took over the active slot on completion order alone',
+            );
+            expect(service.activeSession!.scope, const ReviewScope.study('s_fast'));
+          } finally {
+            await db.close();
+          }
+        },
+      );
+
+      test('a session started with a newer generation replaces the active one', () async {
+        final db = await openAppDatabase(databaseFactoryFfi, dbPath);
+        final repo = GatedStudyRepository(db);
+        final service = ReviewService(repository: repo, clock: clock);
+
+        try {
+          for (final id in ['s_slow', 's_fast']) {
+            await repo.saveStudy(Study(id: id, title: id, createdAt: now, updatedAt: now));
+            final chapter = Chapter.create(studyId: id, sourceOrder: 0, title: 'Chapter');
+            await repo.saveChapter(chapter);
+            await repo.saveDecisions([
+              RepertoireDecision.create(
+                studyId: id,
+                chapterId: chapter.id,
+                nodeId: 'n_$id',
+                expectedMoves: const [RepertoireMove(from: 'e2', to: 'e4', san: 'e4')],
+              ),
+            ]);
+          }
+
+          final slow = await service.startSession(
+            scope: const ReviewScope.study('s_slow'),
+            generation: 1,
+          );
+          expect(service.activeSession, same(slow));
+
+          // In order this time: the newer request still wins, so ordering is not the thing
+          // being relied on — the generation is.
+          final fast = await service.startSession(
+            scope: const ReviewScope.study('s_fast'),
+            generation: 2,
+          );
+          expect(service.activeSession, same(fast));
+        } finally {
+          await db.close();
+        }
+      });
+    });
   });
 }
 

@@ -76,17 +76,38 @@ class ReviewService {
   ReviewSession? _activeSession;
   ReviewSession? get activeSession => _activeSession;
 
+  /// The highest [startSession] generation that has claimed [_activeSession].
+  ///
+  /// A session start reads the studies, chapters, decisions and review states its scope
+  /// needs, which takes long enough for a second request to be made and answered first. The
+  /// last one to *finish* is not the last one the user asked for, and this service has a single
+  /// active session: whichever start lands here last takes it over, so a stale request silently
+  /// replaces the session the screen is showing and every move gets graded against a board the
+  /// user is no longer looking at.
+  ///
+  /// Recording the generation makes the newest request win on request order instead of on
+  /// completion order. A superseded start still returns its own session — its caller may be
+  /// showing it — it just does not get to be the one that answers moves.
+  int _activeGeneration = 0;
+
   /// Starts a new review session for the given [scope].
   ///
   /// Implements targeted scope prefetching (docs/INTEGRATION_MAP.md §From chessrs):
   /// queries and deserializes only the chapters, decisions, and review states
   /// relevant to [scope], optimizing session initialization time and memory footprint.
+  ///
+  /// [generation] orders competing starts. Callers that can issue a second request before the
+  /// first has answered pass a counter that increases with every request; a start whose
+  /// generation has already been superseded still returns its session but does not become
+  /// [activeSession]. Omitting it claims the slot unconditionally, which is only safe for a
+  /// caller that cannot be overtaken.
   Future<ReviewSession> startSession({
     ReviewScope scope = const ReviewScope.all(),
     ReviewMode mode = ReviewMode.srs,
     int? prefetchBatchSize = 25,
     int prefetchRefillThreshold = 3,
     int? remainingDailyQuota,
+    int? generation,
   }) async {
     final List<Study> targetStudies;
     final List<Chapter> targetChapters;
@@ -157,7 +178,12 @@ class ReviewService {
       remainingDailyQuota: remainingDailyQuota,
     );
 
-    _activeSession = session;
+    // A later request has already claimed the active slot, so this session is only being
+    // returned for a caller that is about to discard it.
+    if (generation == null || generation >= _activeGeneration) {
+      if (generation != null) _activeGeneration = generation;
+      _activeSession = session;
+    }
     return session;
   }
 
