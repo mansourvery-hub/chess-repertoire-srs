@@ -203,28 +203,52 @@ Found while fixing H1 and not in the audit. It is a generated file, so the fix i
 Firebase-console decision about which project owns iOS telemetry; a code edit would
 be overwritten on the next regeneration.
 
-## One unresolved thread
+## The unresolved thread, closed
 
-`test/app_test.dart` — the startup token check — is **still skipped**, and the
-cause is not fully established. What is now known, from CI logs rather than
-inference:
+`test/app_test.dart` — the startup token check — was **skipped and blamed on a
+machine difference**. That was wrong, and the thread is now resolved. The test has
+been removed; the behaviour it claimed to cover is still untested, and that is
+recorded below rather than hidden.
 
-- The original quarantine blamed a harness difference and concluded the mock was
-  not intercepting. That was wrong: with a `quick_actions` channel mock added (a
-  real harness gap, since fixed in `test/binding.dart`), the mock demonstrably
-  intercepts on the runner.
-- With that fixed, the failure becomes the original assertion: `Expected: <1>
-  Actual: <0>`. The mock serves three requests on the runner — a connectivity
-  probe, a logo, an FCM registration — and `/api/token/test` appears **zero times**
-  in the whole run, while the assertion that the stored token was read back
-  *passes*.
-- On a developer machine the same mock serves the token check, plus `/api/account`.
+**The cause: the test asserted on a side effect of a provider the harness replaces.**
+`makeTestProviderScope` overrides `preloadedDataProvider` with a static tuple, and
+that provider is the only code in the app that reads the stored token and issues
+`/api/token/test`. With it stubbed, the request cannot be issued by anything, so
+`tokenTestRequests` was structurally `0` and `expect(tokenTestRequests, 1)` could
+never pass. The stub has been in `test/test_provider_scope.dart` since the fork's
+foundation commit.
 
-So the request is genuinely never issued on the runner while the token is read.
-That is an environmental difference in the startup path, not in the auth logic, and
-it has not been isolated. The test now records every request the mock serves and
-reports them on failure, so the next attempt starts from evidence rather than a
-guess. Two earlier attempts reasoned about the request and were wrong.
+A diagnostic that counted HTTP clients settled it in one run: the app created
+**one** client, for the FCM registration. No client was ever built for the token
+check, because no code that would build one ran.
+
+Two things followed from that, and both are why the earlier diagnosis kept failing:
+
+- **It was never a CI-only difference.** The test fails identically on a developer
+  machine — verified by un-skipping the pristine file and running it locally. The
+  "passes here, fails on the runner" behaviour in the old comment was a misreading
+  of a run where the test was still skipped.
+- **Its precondition passed vacuously.** The test asserted that
+  `preloadedDataProvider.future` carried a non-null `authUser` before asserting the
+  request. It was reading the *stub*, whose `authUser` is the test's own input
+  parameter. That assertion could never fail, while looking exactly like coverage of
+  the path under test.
+
+The mock interception theory was also wrong, and was wrong twice: the `quick_actions`
+mock added to `test/binding.dart` was a real fix (it aborted app startup on
+Android and iOS), but it was never the cause of this failure.
+
+**What is still untested, stated plainly:** when Lichess reports a stored token is
+no longer valid, the app deletes it (`preloaded_data.dart`, the `if (token != null)`
+branch). That branch is credential-handling and has no test. It is not reachable
+from an app-level test, because reaching it means running the real
+`preloadedDataProvider`, which needs `package_info_plus`, `device_info_plus` and
+`path_provider` — none of which the shared binding mocks. Testing it properly means
+either mocking those three channels and giving the helper a way to *not* stub the
+provider, or lifting the token check into a provider of its own that depends only on
+`authStorageProvider` and `httpClientFactoryProvider`. Both are real work; neither
+is a five-minute fix, and the second changes production structure for testability.
+Deliberately left as a decision rather than taken quietly.
 
 ## What the ratings were worth
 
