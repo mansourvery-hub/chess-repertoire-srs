@@ -134,5 +134,7 @@ for exactly this, and it is covered where the behaviour is observable.
 Two of the five (M6, M15) are better argued from the spec and from the helper's
 existing contract than from a test, and I would not spend more on them. M3 and
 M4 are genuinely closable and are worth doing when someone has an afternoon.
-M10 needs one instrumentation run to settle whether it is live or dead code, and
-that answer is worth more than another test attempt.
+M10 has since been settled by instrumentation: the path is live, a correct retry
+does produce side effects, and the fix is not dead code. The recipe for its test
+is now known — every failed attempt built a session where the retry had nowhere
+to advance to — even though the test itself is still unwritten.
